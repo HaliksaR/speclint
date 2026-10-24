@@ -1,0 +1,25 @@
+{
+  "name": "@haliksar/speclint",
+  "version": "0.1.0",
+  "description": "Deterministic consistency linter for spec-driven repositories",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "speclint": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}
