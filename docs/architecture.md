@@ -27,11 +27,14 @@ type Requirement = { capability: Capability; name: string; slug: string; line: n
 type Scenario    = { name: string; slug: string; line: number; steps: string[] }
 type Change      = { root: Root; id: string; archived: boolean; deltas: Delta[] } // id без даты архива
 type Delta       = { change: Change; capability: string; op: "added" | "modified" | "removed" | "renamed";
-                     requirement: string; to: string | null; file: string; line: number }
-type Reference   = { address: Address; file: string; line: number; change: Change | null }
+                     requirement: string; to: string | null; file: string; line: number; scenarios: Scenario[] }
+type Reference   = { address: string; file: string; line: number; change: Change | null }        // адрес как в тексте, разбирается правилами
+type Corpus      = { root: Root; capabilities: Capability[]; requirements: Requirement[]; changes: Change[]; references: Reference[]; files: number }
 type Decision    = { id: string; status: "active" | "superseded" | "revoked"; supersededBy: string | null; file: string }  // M3, черновик
 type TestMark    = { address: Address; file: string; line: number }            // M4
 ```
+
+`Delta.scenarios` — сценарии блока ADDED/MODIFIED: без них не разрешить `#сценарий` в ссылке из изменения (D15). `Corpus` — всё, что адаптер прочитал из корня; `files` — число прочитанных файлов.
 
 `Reference` — ссылка из Markdown корня, `TestMark` — та же разметка в тестовом файле. `change` у ссылки — изменение, в чьей папке она лежит.
 
@@ -69,7 +72,7 @@ spec:billing:invoices/create
 spec:change/add-2fa
 ```
 
-Токен — `spec:` и адрес до первого символа, который в адрес не входит. Markdown ищется во всех `*.md` корня, кроме `changes/archive/**`: архив — история, ссылки в нём не проверяются.
+Токен — `spec:` и адрес до первого символа, который в адрес не входит (буквы, цифры, `_ - / # :`). Перед `spec:` не должно быть буквы, цифры, `_` или `-`, а пустой адрес токеном не считается: `openspec:archive`, `Bash(openspec:*)`, «each spec: has» — не ссылки (D18). Блоки кода не исключаются: токен везде один. Markdown ищется во всех `*.md` корня, кроме `changes/archive/**`: архив — история, ссылки в нём не проверяются.
 
 ### Переименование
 
@@ -113,7 +116,19 @@ speclint --version
 
 - `status` — `ok`, если ошибок нет, иначе `findings`; дублирует код возврата.
 - `level` — `error | warning | info`. `file` — путь относительно аргумента `путь` через `/`; `file` и `line` — `null`, если находка не привязана к месту.
-- Находки упорядочены по `file`, `line`, `rule` — отчёт детерминирован.
+- Находки упорядочены по `file`, `line`, `rule` (сравнение по кодовым точкам) — отчёт детерминирован.
+- `summary.files` — число файлов, прочитанных адаптером: спеки, дельты открытых и архивных изменений, `*.md` корня вне архива.
+
+### Текстовый отчёт
+
+По строке на находку, затем итог (D16):
+
+```
+openspec/README.md:3: error ref-dangling: spec:auth/session-timout: требования нет в auth
+speclint: ошибок 1, предупреждений 0, файлов 9
+```
+
+`related` в тексте не печатается — только в JSON.
 
 ## Правила
 
@@ -135,6 +150,14 @@ ID латинские, стабильные; уровень — по умолч�
 | `dependency-missing` | M5 | error | внешнее пространство не объявлено в зависимостях или манифест не найден |
 | `scenario-untested-anywhere` | M5 | warning | сценарий не покрыт ни в одном репозитории, чьи манифесты известны |
 | `scenario-steps-missing` | M6 | warning | в тесте с меткой сценария нет его шагов дословно среди строковых литералов |
+
+### Как работают правила M1
+
+- **Видимость.** Для каждого открытого изменения строится своя картина: основные спеки + его дельты в порядке RENAMED → REMOVED → MODIFIED → ADDED. MODIFIED и ADDED приносят блок дельты целиком (имя, строку, сценарии), RENAMED сохраняет сценарии и место старого блока, дельта на новую capability создаёт её.
+- **`ref-dangling`.** Разбор цели: capability — самый длинный префикс, затем ровно один сегмент требования и необязательный `#сценарий`. Если требования нет, по порядку: цепочка RENAMED архивных изменений и своего изменения → подсказка нового адреса, `related` — строки FROM; REMOVED архивного изменения → `ref-archived`; цель разрешается в картине чужого открытого изменения → «есть в открытом изменении X», `related` — место в дельте. `change/<id>`: открытое — ок, архивное — `ref-archived`, иначе висячая.
+- **`delta-target-missing` / `delta-target-exists`.** Проверяются по ходу применения дельт изменения к основным спекам: MODIFIED/REMOVED/RENAMED FROM — на имя, которого нет на этом шаге и нет в ADDED другого открытого изменения; ADDED — на имя, которое на этом шаге уже есть. Сравнение имён точное, как в OpenSpec. Архивные изменения не проверяются.
+- **`delta-overlap`.** Две дельты разных открытых изменений с одной capability и одним именем (для RENAMED — FROM). Предупреждение получает каждая такая дельта, `related` — дельты других изменений (D19).
+- **`address-collision`.** Проверяется в основных спеках и в картине каждого открытого изменения; одна и та же пара имён сообщается один раз — на втором по порядку элементе, `related` — первый.
 
 Внутрифайловые проверки `openspec validate` (дубликаты в разделах, конфликты разделов, непарные RENAMED, потеря сценариев) speclint не повторяет — см. [openspec-format.md](openspec-format.md#что-уже-проверяет-openspec-validate).
 

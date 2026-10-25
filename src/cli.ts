@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { loadOpenSpec } from "./openspec.js";
+import { check } from "./rules.js";
 import { exitCode, jsonReport, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -11,6 +13,7 @@ const fail = (message: string): never => {
 
 const args = process.argv.slice(2);
 let format = "text";
+let path = ".";
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === "--version") {
@@ -21,9 +24,12 @@ for (let i = 0; i < args.length; i++) {
     if (format !== "text" && format !== "json") fail(`неизвестный формат: ${format}`);
   } else if (arg.startsWith("-")) {
     fail(`неизвестный флаг: ${arg}`);
+  } else {
+    path = arg;
   }
 }
 
-const findings: Finding[] = [];
-process.stdout.write(`${format === "json" ? jsonReport(version, findings, 0) : textReport(findings, 0)}\n`);
+const corpus = loadOpenSpec(path) ?? fail(`корень не найден: ${path}/openspec`);
+const findings: Finding[] = check(corpus);
+process.stdout.write(`${format === "json" ? jsonReport(version, findings, corpus.files) : textReport(findings, corpus.files)}\n`);
 process.exit(exitCode(findings));
