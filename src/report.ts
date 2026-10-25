@@ -32,4 +32,5 @@ export const jsonReport = (version: string, findings: Finding[], files: number) 
   );
 
 export const textReport = (findings: Finding[], files: number) =>
+  findings.map((f) => `${f.file ?? ""}:${f.line ?? ""}: ${f.level} ${f.rule}: ${f.message}\n`).join("") +
   `speclint: ошибок ${count(findings, "error")}, предупреждений ${count(findings, "warning")}, файлов ${files}`;

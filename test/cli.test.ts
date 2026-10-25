@@ -24,14 +24,14 @@ describe("speclint CLI", () => {
     expect(cli("--format", "xml").status).toBe(2);
   });
 
-  it("prints an empty JSON report and exits 0", () => {
-    const r = cli("--format", "json");
+  it("prints an empty JSON report for a clean repository and exits 0", () => {
+    const r = cli(new URL("./fixtures/clean", import.meta.url).pathname, "--format", "json");
     expect(JSON.parse(r.stdout)).toEqual({
       tool: "speclint",
       version: pkg.version,
       status: "ok",
       findings: [],
-      summary: { errors: 0, warnings: 0, infos: 0, files: 0 },
+      summary: { errors: 0, warnings: 0, infos: 0, files: 6 },
     });
     expect(r.status).toBe(0);
   });
