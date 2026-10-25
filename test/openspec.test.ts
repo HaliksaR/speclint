@@ -131,10 +131,50 @@ describe("deltas and addresses", () => {
   });
 });
 
+describe("a monorepo with several roots in speclint.json", () => {
+  const auth = "services/auth/openspec";
+  const billing = "services/billing/openspec";
+
+  it("checks only configured roots, resolves addresses across them by space and keeps deltas per root", () => {
+    const r = report("monorepo");
+    expect(r.findings).toEqual([
+      at("error", "ref-dangling", `${auth}/README.md`, 5, "spec:invoices/create: capability нет"),
+      at("error", "ref-dangling", `${billing}/README.md`, 5, "spec:auth:session/logout: требования нет в session"),
+      at("error", "ref-dangling", `${billing}/README.md`, 6, "spec:auth:session/login: требование переименовано в spec:auth:session/sign-in (rename-login)", [
+        [`${auth}/changes/archive/2026-02-01-rename-login/specs/session/spec.md`, 2],
+      ]),
+      at("error", "ref-dangling", `${billing}/README.md`, 7, "spec:auth:session/two-factor: требования нет в session; есть в открытом изменении add-2fa", [
+        [`${auth}/changes/add-2fa/specs/session/spec.md`, 3],
+      ]),
+      at("info", "ref-external-unchecked", `${billing}/README.md`, 9, "spec:identity:users/profile: внешний адрес не проверяется до M5"),
+    ]);
+    expect(r.summary).toEqual({ errors: 4, warnings: 0, infos: 1, files: 10 });
+    expect(r.code).toBe(1);
+  });
+});
+
 describe("launch errors", () => {
   it("exits 2 when the openspec root is missing", () => {
     const r = run("no-such-repo");
     expect(r.stderr).toContain("корень не найден");
+    expect(r.status).toBe(2);
+  });
+
+  it("exits 2 when speclint.json is not valid JSON", () => {
+    const r = run("config-broken");
+    expect(r.stderr).toContain("нечитаемая конфигурация");
+    expect(r.status).toBe(2);
+  });
+
+  it("exits 2 when a configured root does not exist", () => {
+    const r = run("config-missing-root");
+    expect(r.stderr).toMatch(/корень не найден: .*services\/ghost\/openspec/);
+    expect(r.status).toBe(2);
+  });
+
+  it("exits 2 when two roots share a space", () => {
+    const r = run("config-duplicate-space");
+    expect(r.stderr).toContain("пространство core у двух корней");
     expect(r.status).toBe(2);
   });
 });

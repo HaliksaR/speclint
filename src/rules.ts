@@ -50,65 +50,73 @@ const resolve = (view: View, target: string): Resolved => {
   return s ? { ok: true, at: { file: item.file, line: s.line } } : { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null };
 };
 
-export const check = (corpus: Corpus): Finding[] => {
+type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View> };
+
+export const check = (corpora: Corpus[]): Finding[] => {
   const findings: Finding[] = [];
   const add = (level: Finding["level"], rule: string, at: Place, message: string, related: Place[] = []) =>
     findings.push({ level, rule, file: at.file, line: at.line, message, related: related.map((p) => ({ file: p.file, line: p.line })) });
-
-  const open = corpus.changes.filter((c) => !c.archived);
-  const archived = corpus.changes.filter((c) => c.archived);
-  const main = mainView(corpus);
   const label = (d: Delta) => `${d.capability}/${d.requirement}`;
 
-  const views = new Map(
-    open.map((change) => [
-      change,
-      apply(main, change, (d, reqs) => {
-        if (d.op === "added" && reqs.has(d.requirement)) add("error", "delta-target-exists", d, `ADDED ${label(d)}: требование уже есть`);
-        const addedElsewhere = open.some(
-          (c) => c !== change && c.deltas.some((e) => e.op === "added" && e.capability === d.capability && e.requirement === d.requirement),
-        );
-        if (d.op !== "added" && !reqs.has(d.requirement) && !addedElsewhere)
-          add("error", "delta-target-missing", d, `${d.op.toUpperCase()} ${label(d)}: требования нет`);
-      }),
-    ]),
-  );
+  const contexts = corpora.map((corpus): Context => {
+    const open = corpus.changes.filter((c) => !c.archived);
+    const archived = corpus.changes.filter((c) => c.archived);
+    const main = mainView(corpus);
 
-  const deltas = open.flatMap((c) => c.deltas);
-  for (const d of deltas) {
-    const others = deltas.filter((e) => e.change !== d.change && e.capability === d.capability && e.requirement === d.requirement);
-    if (others.length)
-      add("warning", "delta-overlap", d, `требование ${label(d)} трогает и изменение ${[...new Set(others.map((e) => e.change.id))].join(", ")}`, others);
-  }
+    const views = new Map(
+      open.map((change) => [
+        change,
+        apply(main, change, (d, reqs) => {
+          if (d.op === "added" && reqs.has(d.requirement)) add("error", "delta-target-exists", d, `ADDED ${label(d)}: требование уже есть`);
+          const addedElsewhere = open.some(
+            (c) => c !== change && c.deltas.some((e) => e.op === "added" && e.capability === d.capability && e.requirement === d.requirement),
+          );
+          if (d.op !== "added" && !reqs.has(d.requirement) && !addedElsewhere)
+            add("error", "delta-target-missing", d, `${d.op.toUpperCase()} ${label(d)}: требования нет`);
+        }),
+      ]),
+    );
 
-  const seen = new Set<string>();
-  const collide = (key: string, at: Place, message: string, first: Place) => {
-    if (seen.has(key)) return;
-    seen.add(key);
-    add("error", "address-collision", at, message, [first]);
-  };
-  for (const view of [main, ...views.values()])
-    for (const [cap, { reqs }] of view) {
-      const items = [...reqs.values()];
-      items.forEach((r) => {
-        const first = items.find((o) => o.slug === r.slug)!;
-        if (first !== r) collide(`${cap}/${r.slug}|${first.name}|${r.name}`, r, `адрес ${cap}/${r.slug} у двух требований: ${first.name}, ${r.name}`, first);
-        for (const s of r.scenarios) {
-          const fs = r.scenarios.find((o) => o.slug === s.slug)!;
-          if (fs !== s)
-            collide(`${cap}/${r.slug}#${s.slug}|${fs.name}|${s.name}`, { file: r.file, line: s.line },
-              `адрес ${cap}/${r.slug}#${s.slug} у двух сценариев: ${fs.name}, ${s.name}`, { file: r.file, line: fs.line });
-        }
-      });
+    const deltas = open.flatMap((c) => c.deltas);
+    for (const d of deltas) {
+      const others = deltas.filter((e) => e.change !== d.change && e.capability === d.capability && e.requirement === d.requirement);
+      if (others.length)
+        add("warning", "delta-overlap", d, `требование ${label(d)} трогает и изменение ${[...new Set(others.map((e) => e.change.id))].join(", ")}`, others);
     }
 
-  for (const ref of corpus.references) checkReference(ref);
+    const seen = new Set<string>();
+    const collide = (key: string, at: Place, message: string, first: Place) => {
+      if (seen.has(key)) return;
+      seen.add(key);
+      add("error", "address-collision", at, message, [first]);
+    };
+    for (const view of [main, ...views.values()])
+      for (const [cap, { reqs }] of view) {
+        const items = [...reqs.values()];
+        items.forEach((r) => {
+          const first = items.find((o) => o.slug === r.slug)!;
+          if (first !== r) collide(`${cap}/${r.slug}|${first.name}|${r.name}`, r, `адрес ${cap}/${r.slug} у двух требований: ${first.name}, ${r.name}`, first);
+          for (const s of r.scenarios) {
+            const fs = r.scenarios.find((o) => o.slug === s.slug)!;
+            if (fs !== s)
+              collide(`${cap}/${r.slug}#${s.slug}|${fs.name}|${s.name}`, { file: r.file, line: s.line },
+                `адрес ${cap}/${r.slug}#${s.slug} у двух сценариев: ${fs.name}, ${s.name}`, { file: r.file, line: fs.line });
+          }
+        });
+      }
 
-  function checkReference(ref: Reference) {
+    return { corpus, open, archived, main, views };
+  });
+
+  for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref);
+
+  function checkReference(own: Context, ref: Reference) {
     const token = `spec:${ref.address}`;
     const external = ref.address.match(/^([a-z0-9-]+):(.*)$/);
-    if (external && external[1] !== corpus.root.space)
-      return add("info", "ref-external-unchecked", ref, `${token}: внешний адрес не проверяется до M5`);
+    const ctx = external ? contexts.find((c) => c.corpus.root.space === external[1]) : own;
+    if (!ctx) return add("info", "ref-external-unchecked", ref, `${token}: внешний адрес не проверяется до M5`);
+    const { open, archived, views } = ctx;
+    const local = ctx === own ? ref.change : null;
     const target = external ? external[2] : ref.address;
     if (target.startsWith("change/")) {
       const id = target.slice("change/".length);
@@ -116,11 +124,11 @@ export const check = (corpus: Corpus): Finding[] => {
       if (archived.some((c) => c.id === id)) return add("error", "ref-archived", ref, `${token}: изменение в архиве`);
       return add("error", "ref-dangling", ref, `${token}: изменения нет`);
     }
-    const result = resolve(ref.change ? views.get(ref.change)! : main, target);
+    const result = resolve(local ? views.get(local)! : ctx.main, target);
     if (result.ok) return;
     if (result.missing) {
       const { cap, slug: wanted } = result.missing;
-      const renames = [...archived, ...(ref.change ? [ref.change] : [])].flatMap((c) => c.deltas).filter((d) => d.op === "renamed" && d.capability === cap);
+      const renames = [...archived, ...(local ? [local] : [])].flatMap((c) => c.deltas).filter((d) => d.op === "renamed" && d.capability === cap);
       const chain: Delta[] = [];
       let current = wanted;
       for (let d; (d = renames.find((r) => slug(r.requirement) === current)) && !chain.includes(d); current = slug(d.to!)) chain.push(d);
@@ -129,7 +137,7 @@ export const check = (corpus: Corpus): Finding[] => {
       const removed = archived.flatMap((c) => c.deltas).find((d) => d.op === "removed" && d.capability === cap && slug(d.requirement) === wanted);
       if (removed) return add("error", "ref-archived", ref, `${token}: требование удалено архивным изменением ${removed.change.id}`, [removed]);
     }
-    const elsewhere = open.filter((c) => c !== ref.change).flatMap((c) => {
+    const elsewhere = open.filter((c) => c !== local).flatMap((c) => {
       const r = resolve(views.get(c)!, target);
       return r.ok ? [{ id: c.id, at: r.at }] : [];
     });

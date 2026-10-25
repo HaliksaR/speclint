@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Root } from "./model.js";
 import { loadOpenSpec } from "./openspec.js";
 import { check } from "./rules.js";
 import { exitCode, jsonReport, textReport, type Finding } from "./report.js";
@@ -29,7 +31,27 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-const corpus = loadOpenSpec(path) ?? fail(`корень не найден: ${path}/openspec`);
-const findings: Finding[] = check(corpus);
-process.stdout.write(`${format === "json" ? jsonReport(version, findings, corpus.files) : textReport(findings, corpus.files)}\n`);
+const readRoots = (file: string): Root[] => {
+  let config;
+  try {
+    config = JSON.parse(readFileSync(file, "utf8"));
+  } catch (e) {
+    return fail(`нечитаемая конфигурация: speclint.json: ${(e as Error).message}`);
+  }
+  const roots = config?.roots;
+  const valid = (r: any) => typeof r?.path === "string" && typeof r.space === "string" && /^[a-z0-9-]+$/.test(r.space);
+  if (!Array.isArray(roots) || !roots.length || !roots.every(valid))
+    return fail("нечитаемая конфигурация: speclint.json: roots — непустой список { path, space }, space из [a-z0-9-]");
+  const spaces = roots.map((r) => r.space);
+  const twice = spaces.find((s, i) => spaces.indexOf(s) !== i);
+  if (twice) fail(`нечитаемая конфигурация: speclint.json: пространство ${twice} у двух корней`);
+  return roots.map((r) => ({ path: r.path, space: r.space }));
+};
+
+const config = join(path, "speclint.json");
+const roots = existsSync(config) ? readRoots(config) : [{ path: "openspec", space: null }];
+const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корень не найден: ${path}/${root.path}`));
+const files = corpora.reduce((n, c) => n + c.files, 0);
+const findings: Finding[] = check(corpora);
+process.stdout.write(`${format === "json" ? jsonReport(version, findings, files) : textReport(findings, files)}\n`);
 process.exit(exitCode(findings));
