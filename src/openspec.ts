@@ -103,12 +103,11 @@ const deltas = (change: Change, capability: string, file: string, text: string):
   });
 };
 
-const TOKEN = /(?<![\p{L}\p{N}_-])spec:([\p{L}\p{N}_\-/#:]+)/gu;
+const TOKEN = /(?<![\p{L}\p{N}_\-/])spec:([\p{L}\p{N}_\-/#:]+)/gu;
 
-export const loadOpenSpec = (base: string): Corpus | null => {
-  const rootDir = join(base, "openspec");
+export const loadOpenSpec = (base: string, root: Root): Corpus | null => {
+  const rootDir = join(base, root.path);
   if (!existsSync(rootDir)) return null;
-  const root: Root = { path: "openspec", space: null };
   const rel = (abs: string) => relative(base, abs).split(sep).join("/");
   const read = new Set<string>();
   const text = (abs: string) => {
