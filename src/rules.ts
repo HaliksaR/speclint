@@ -1,4 +1,4 @@
-import { slug, type Change, type Corpus, type Delta, type Reference, type Scenario } from "./model.js";
+import { slug, type Change, type Corpus, type Decision, type Delta, type Reference, type Scenario } from "./model.js";
 import type { Finding } from "./report.js";
 
 type Item = { name: string; slug: string; file: string; line: number; scenarios: Scenario[] };
@@ -105,8 +105,27 @@ export const check = (corpora: Corpus[]): Finding[] => {
         });
       }
 
+    const decision = (id: string) => corpus.decisions.find((d) => d.id === id);
+    for (const d of corpus.decisions) {
+      const at = { file: d.file, line: 1 };
+      if (!["active", "superseded", "revoked"].includes(d.status))
+        add("error", "decision-status-invalid", at, `решение ${d.id}: статус ${d.status || "не указан"}, ожидается active | superseded | revoked`);
+      else if (d.status === "superseded" && !d.supersededBy) add("error", "decision-status-invalid", at, `решение ${d.id}: superseded без superseded-by`);
+      else if (d.status !== "superseded" && d.supersededBy) add("error", "decision-status-invalid", at, `решение ${d.id}: superseded-by при статусе ${d.status}`);
+      if (!d.rationale) add("warning", "decision-no-rationale", at, `решение ${d.id} без обоснования`);
+      if (d.supersededBy && !decision(d.supersededBy)) add("error", "decision-supersede-missing", at, `решение ${d.id} заменено несуществующим ${d.supersededBy}`);
+      const chain = replacements(corpus, d);
+      if (chain.at(-1) === d) add("error", "decision-supersede-cycle", at, `цикл замен: ${[d, ...chain].map((c) => c.id).join(" → ")}`);
+    }
+
     return { corpus, open, archived, main, views };
   });
+
+  function replacements(corpus: Corpus, from: Decision) {
+    const chain: Decision[] = [];
+    for (let d = from, next; d.supersededBy && (next = corpus.decisions.find((e) => e.id === d.supersededBy)) && !chain.includes(next); d = next) chain.push(next);
+    return chain;
+  }
 
   for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref);
 
@@ -123,6 +142,16 @@ export const check = (corpora: Corpus[]): Finding[] => {
       if (open.some((c) => c.id === id)) return;
       if (archived.some((c) => c.id === id)) return add("error", "ref-archived", ref, `${token}: изменение в архиве`);
       return add("error", "ref-dangling", ref, `${token}: изменения нет`);
+    }
+    if (target.startsWith("decision/")) {
+      const d = ctx.corpus.decisions.find((d) => d.id === target.slice("decision/".length));
+      if (!d) return add("error", "ref-dangling", ref, `${token}: решения нет`);
+      if (d.status === "active" || own.corpus.decisions.some((o) => o.file === ref.file)) return;
+      if (d.status === "revoked") return add("error", "decision-inactive-ref", ref, `${token}: решение отменено`);
+      const chain = replacements(ctx.corpus, d);
+      const next = (chain.at(-1) ?? d).supersededBy;
+      const tail = next && !ctx.corpus.decisions.some((e) => e.id === next) ? [next] : [];
+      return add("error", "decision-inactive-ref", ref, `${token}: решение заменено: ${[d.id, ...chain.map((c) => c.id), ...tail].join(" → ")}`, chain.map((c) => ({ file: c.file, line: 1 })));
     }
     const result = resolve(local ? views.get(local)! : ctx.main, target);
     if (result.ok) return;

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { slug, type Capability, type Change, type Corpus, type Delta, type Reference, type Requirement, type Root, type Scenario } from "./model.js";
+import { slug, type Capability, type Change, type Corpus, type Decision, type Delta, type Reference, type Requirement, type Root, type Scenario } from "./model.js";
 
 type Line = { text: string; line: number; code: boolean };
 type Block = { name: string; line: number; body: Line[] };
@@ -141,5 +141,19 @@ export const loadOpenSpec = (base: string, root: Root): Corpus | null => {
       return toLines(text(f)).flatMap((l) => [...l.text.matchAll(TOKEN)].map((m) => ({ address: m[1], file: rel(f), line: l.line, change })));
     });
 
-  return { root, capabilities, requirements: reqs, changes: changes.map((c) => c.change), references, files: read.size };
+  const decisionsDir = join(rootDir, "decisions");
+  const decisions: Decision[] = entries(decisionsDir)
+    .filter((e) => e.isFile() && e.name.endsWith(".md"))
+    .map((e) => {
+      const lines = toLines(text(join(decisionsDir, e.name)));
+      const end = lines[0]?.text === "---" ? lines.findIndex((l, i) => i > 0 && l.text === "---") : -1;
+      const meta = new Map(lines.slice(1, Math.max(end, 1)).flatMap((l) => {
+        const m = l.text.match(/^([\w-]+):\s*(.*?)\s*$/);
+        return m ? [[m[1], m[2]] as const] : [];
+      }));
+      const rationale = sections(lines.slice(end + 1)).some((s) => /^(Rationale|Обоснование)$/i.test(s.title) && s.lines.some((l) => l.text.trim()));
+      return { id: e.name.slice(0, -3), status: meta.get("status") ?? "", supersededBy: meta.get("superseded-by") || null, rationale, file: rel(join(decisionsDir, e.name)) };
+    });
+
+  return { root, capabilities, requirements: reqs, changes: changes.map((c) => c.change), references, decisions, files: read.size };
 };
