@@ -1,0 +1,6 @@
+{
+  "roots": [
+    { "path": "shared", "space": "shared" },
+    { "path": "app/openspec", "space": "app" }
+  ]
+}

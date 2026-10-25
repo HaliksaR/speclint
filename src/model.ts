@@ -13,6 +13,7 @@ export type Delta = {
   line: number;
   scenarios: Scenario[];
 };
+export type Decision = { id: string; status: string; supersededBy: string | null; rationale: boolean; file: string };
 export type Reference = { address: string; file: string; line: number; change: Change | null };
 export type Corpus = {
   root: Root;
@@ -20,6 +21,7 @@ export type Corpus = {
   requirements: Requirement[];
   changes: Change[];
   references: Reference[];
+  decisions: Decision[];
   files: number;
 };
 

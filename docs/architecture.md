@@ -29,12 +29,14 @@ type Change      = { root: Root; id: string; archived: boolean; deltas: Delta[] 
 type Delta       = { change: Change; capability: string; op: "added" | "modified" | "removed" | "renamed";
                      requirement: string; to: string | null; file: string; line: number; scenarios: Scenario[] }
 type Reference   = { address: string; file: string; line: number; change: Change | null }        // адрес как в тексте, разбирается правилами
-type Corpus      = { root: Root; capabilities: Capability[]; requirements: Requirement[]; changes: Change[]; references: Reference[]; files: number }
-type Decision    = { id: string; status: "active" | "superseded" | "revoked"; supersededBy: string | null; file: string }  // M3, черновик
+type Corpus      = { root: Root; capabilities: Capability[]; requirements: Requirement[]; changes: Change[]; references: Reference[]; decisions: Decision[]; files: number }
+type Decision    = { id: string; status: string; supersededBy: string | null; rationale: boolean; file: string }  // M3
 type TestMark    = { address: Address; file: string; line: number }            // M4
 ```
 
 `Delta.scenarios` — сценарии блока ADDED/MODIFIED: без них не разрешить `#сценарий` в ссылке из изменения (D15). `Corpus` — всё, что адаптер прочитал из корня; `files` — число прочитанных файлов.
+
+`Decision.status` — строка как в файле: адаптер не выдаёт находок, неверный статус ловит правило `decision-status-invalid` (D25). `rationale` — есть ли непустое обоснование.
 
 `Reference` — ссылка из Markdown корня, `TestMark` — та же разметка в тестовом файле. `change` у ссылки — изменение, в чьей папке она лежит.
 
@@ -44,7 +46,7 @@ type TestMark    = { address: Address; file: string; line: number }            /
 адрес        = [пространство ":"] цель
 цель         = capability ["/" требование ["#" сценарий]]
              | "change/" id-изменения
-             | "decision/" id-решения                 (M3)
+             | "decision/" id-решения
 capability   = сегмент {"/" сегмент}                  путь папки относительно specs/
 требование   = слаг
 сценарий     = слаг
@@ -145,6 +147,9 @@ ID латинские, стабильные; уровень — по умолч�
 | `ref-external-unchecked` | M1 | info | внешний адрес до M5 не проверяется |
 | `decision-inactive-ref` | M3 | error | ссылка на заменённое или отменённое решение |
 | `decision-no-rationale` | M3 | warning | решение без обоснования |
+| `decision-status-invalid` | M3 | error | статус не `active`/`superseded`/`revoked`, `superseded` без `superseded-by` или `superseded-by` при другом статусе |
+| `decision-supersede-missing` | M3 | error | `superseded-by` на решение, которого нет в корне |
+| `decision-supersede-cycle` | M3 | error | цепочка замен возвращается к решению |
 | `test-ref-dangling` | M4 | error | метка в тесте на несуществующий адрес |
 | `scenario-untested` | M4 | warning | у сценария нет ни одной метки в тестах |
 | `dependency-missing` | M5 | error | внешнее пространство не объявлено в зависимостях или манифест не найден |
@@ -158,6 +163,30 @@ ID латинские, стабильные; уровень — по умолч�
 - **`delta-target-missing` / `delta-target-exists`.** Проверяются по ходу применения дельт изменения к основным спекам: MODIFIED/REMOVED/RENAMED FROM — на имя, которого нет на этом шаге и нет в ADDED другого открытого изменения; ADDED — на имя, которое на этом шаге уже есть. Сравнение имён точное, как в OpenSpec. Архивные изменения не проверяются.
 - **`delta-overlap`.** Две дельты разных открытых изменений с одной capability и одним именем (для RENAMED — FROM). Предупреждение получает каждая такая дельта, `related` — дельты других изменений (D19).
 - **`address-collision`.** Проверяется в основных спеках и в картине каждого открытого изменения; одна и та же пара имён сообщается один раз — на втором по порядку элементе, `related` — первый.
+
+### Реестр решений (M3)
+
+Решения — расширение формата, в OpenSpec их нет; корень без папки `decisions/` проверяется как раньше (D24).
+
+- **Где.** `<корень>/decisions/<id>.md`, без вложенных папок; `id` — имя файла без `.md`, поэтому дубликатов в корне нет. Общие решения монорепо — в любом корне или в отдельном корне из `speclint.json`; в M5 общие решения публикуются отдельным репозиторием, то есть ещё одним пространством.
+- **Формат.** Front-matter между строками `---` в начале файла, ключи `status: active | superseded | revoked` и `superseded-by: <id>` (решение того же корня). Обоснование — непустой раздел `## Rationale` или `## Обоснование`.
+
+```markdown
+---
+status: superseded
+superseded-by: 0012-paseto
+---
+
+# 0007 JWT для сессий
+
+## Rationale
+
+…
+```
+
+- **Ссылка** `spec:[пространство:]decision/<id>` разрешается по общим правилам адреса, в том числе в другой корень по пространству. Нет решения — `ref-dangling`. `superseded` или `revoked` — `decision-inactive-ref`: для заменённого сообщение называет цепочку замен до первого не заменённого решения (или до несуществующего id), `related` — файлы замен. Ссылки из самих файлов `decisions/` на неактивные решения не ошибка: реестр ссылается на свою историю (D26).
+- **Реестр.** `decision-status-invalid`, `decision-no-rationale`, `decision-supersede-missing`, `decision-supersede-cycle` — на строке 1 файла решения. Цикл сообщается на каждом решении цикла (D27).
+- Метки в тестах (M4) разрешают `decision/<id>` тем же кодом.
 
 Внутрифайловые проверки `openspec validate` (дубликаты в разделах, конфликты разделов, непарные RENAMED, потеря сценариев) speclint не повторяет — см. [openspec-format.md](openspec-format.md#что-уже-проверяет-openspec-validate).
 
@@ -209,4 +238,4 @@ JSON, публикуется репозиторием на релизе кома
 
 - `speclint` — версия формата манифеста.
 - `version` сверяется с зафиксированной в `dependencies`; расхождение — ошибка запуска (`2`).
-- Решения — по формату M3 (Q3).
+- Решения — по формату M3: адрес, статус, замена.

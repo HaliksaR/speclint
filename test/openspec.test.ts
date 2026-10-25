@@ -153,6 +153,33 @@ describe("a monorepo with several roots in speclint.json", () => {
   });
 });
 
+describe("a decision registry in several roots", () => {
+  const app = "app/openspec/README.md";
+  const decision = (id: string) => `shared/decisions/${id}.md`;
+
+  it("reports inactive, dangling and malformed decisions and resolves them across roots", () => {
+    const r = report("decisions");
+    expect(r.findings).toEqual([
+      at("error", "decision-inactive-ref", app, 4, "spec:shared:decision/0001-rest: решение заменено: 0001-rest → 0002-grpc → 0003-events", [
+        [decision("0002-grpc"), 1],
+        [decision("0003-events"), 1],
+      ]),
+      at("error", "decision-inactive-ref", app, 5, "spec:shared:decision/0004-sessions: решение отменено"),
+      at("error", "ref-dangling", app, 6, "spec:shared:decision/0042-nope: решения нет"),
+      at("error", "decision-inactive-ref", app, 8, "spec:shared:decision/0006-ghost: решение заменено: 0006-ghost → 0099-none"),
+      at("warning", "decision-no-rationale", decision("0005-cache"), 1, "решение 0005-cache без обоснования"),
+      at("error", "decision-supersede-missing", decision("0006-ghost"), 1, "решение 0006-ghost заменено несуществующим 0099-none"),
+      at("error", "decision-supersede-cycle", decision("0007-ping"), 1, "цикл замен: 0007-ping → 0008-pong → 0007-ping"),
+      at("error", "decision-supersede-cycle", decision("0008-pong"), 1, "цикл замен: 0008-pong → 0007-ping → 0008-pong"),
+      at("error", "decision-status-invalid", decision("0009-draft"), 1, "решение 0009-draft: статус draft, ожидается active | superseded | revoked"),
+      at("error", "decision-status-invalid", decision("0010-half"), 1, "решение 0010-half: superseded без superseded-by"),
+      at("error", "decision-status-invalid", decision("0011-mixed"), 1, "решение 0011-mixed: superseded-by при статусе active"),
+    ]);
+    expect(r.summary).toEqual({ errors: 10, warnings: 1, infos: 0, files: 14 });
+    expect(r.code).toBe(1);
+  });
+});
+
 describe("launch errors", () => {
   it("exits 2 when the openspec root is missing", () => {
     const r = run("no-such-repo");
