@@ -1,11 +1,11 @@
-import { slug, type Change, type Corpus, type Decision, type Delta, type Reference, type Scenario } from "./model.js";
+import { slug, type Change, type Corpus, type Decision, type Delta, type Reference, type Scenario, type TestMark } from "./model.js";
 import type { Finding } from "./report.js";
 
 type Item = { name: string; slug: string; file: string; line: number; scenarios: Scenario[] };
 type Capability = { file: string; reqs: Map<string, Item> };
 type View = Map<string, Capability>;
 type Place = { file: string; line: number | null };
-type Resolved = { ok: true; at: Place } | { ok: false; message: string; missing: { cap: string; slug: string } | null };
+type Resolved = { ok: true; at: Place; key: string } | { ok: false; message: string; missing: { cap: string; slug: string } | null };
 
 const ORDER: Delta["op"][] = ["renamed", "removed", "modified", "added"];
 
@@ -42,17 +42,17 @@ const resolve = (view: View, target: string): Resolved => {
   const cap = segs.slice(0, n).join("/");
   const capability = view.get(cap)!;
   const rest = segs.slice(n);
-  if (rest.length === 0 && scenario === undefined) return { ok: true, at: { file: capability.file, line: null } };
+  if (rest.length === 0 && scenario === undefined) return { ok: true, at: { file: capability.file, line: null }, key: cap };
   const item = rest.length === 1 ? [...capability.reqs.values()].find((r) => r.slug === rest[0]) : undefined;
   if (!item) return { ok: false, message: `требования нет в ${cap}`, missing: rest.length === 1 ? { cap, slug: rest[0] } : null };
-  if (scenario === undefined) return { ok: true, at: item };
+  if (scenario === undefined) return { ok: true, at: item, key: `${cap}/${item.slug}` };
   const s = item.scenarios.find((s) => s.slug === scenario);
-  return s ? { ok: true, at: { file: item.file, line: s.line } } : { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null };
+  return s ? { ok: true, at: { file: item.file, line: s.line }, key: `${cap}/${item.slug}#${s.slug}` } : { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null };
 };
 
-type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View> };
+type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string> };
 
-export const check = (corpora: Corpus[]): Finding[] => {
+export const check = (corpora: Corpus[], marks: TestMark[]): Finding[] => {
   const findings: Finding[] = [];
   const add = (level: Finding["level"], rule: string, at: Place, message: string, related: Place[] = []) =>
     findings.push({ level, rule, file: at.file, line: at.line, message, related: related.map((p) => ({ file: p.file, line: p.line })) });
@@ -118,7 +118,7 @@ export const check = (corpora: Corpus[]): Finding[] => {
       if (chain.at(-1) === d) add("error", "decision-supersede-cycle", at, `цикл замен: ${[d, ...chain].map((c) => c.id).join(" → ")}`);
     }
 
-    return { corpus, open, archived, main, views };
+    return { corpus, open, archived, main, views, covered: new Set<string>() };
   });
 
   function replacements(corpus: Corpus, from: Decision) {
@@ -127,9 +127,23 @@ export const check = (corpora: Corpus[]): Finding[] => {
     return chain;
   }
 
-  for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref);
+  for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref, false);
+  for (const mark of marks) {
+    const ref = { address: mark.address, file: mark.file, line: mark.line, change: null };
+    const own = contexts.find((c) => c.corpus.root === mark.root);
+    if (own || /^[a-z0-9-]+:/.test(mark.address)) checkReference(own ?? contexts[0], ref, true);
+    else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
+  }
+  for (const { corpus, covered } of contexts)
+    for (const r of corpus.requirements)
+      for (const s of r.scenarios) {
+        const req = `${r.capability.id}/${r.slug}`;
+        if (!covered.has(req) && !covered.has(`${req}#${s.slug}`))
+          add("warning", "scenario-untested", { file: r.capability.file, line: s.line }, `сценарий ${req}#${s.slug} без теста`);
+      }
 
-  function checkReference(own: Context, ref: Reference) {
+  function checkReference(own: Context, ref: Reference, test: boolean) {
+    const fail = (rule: string, at: Place, message: string, related: Place[] = []) => add("error", test ? "test-ref-dangling" : rule, at, message, related);
     const token = `spec:${ref.address}`;
     const external = ref.address.match(/^([a-z0-9-]+):(.*)$/);
     const ctx = external ? contexts.find((c) => c.corpus.root.space === external[1]) : own;
@@ -140,21 +154,29 @@ export const check = (corpora: Corpus[]): Finding[] => {
     if (target.startsWith("change/")) {
       const id = target.slice("change/".length);
       if (open.some((c) => c.id === id)) return;
-      if (archived.some((c) => c.id === id)) return add("error", "ref-archived", ref, `${token}: изменение в архиве`);
-      return add("error", "ref-dangling", ref, `${token}: изменения нет`);
+      if (archived.some((c) => c.id === id)) return fail("ref-archived", ref, `${token}: изменение в архиве`);
+      return fail("ref-dangling", ref, `${token}: изменения нет`);
     }
     if (target.startsWith("decision/")) {
       const d = ctx.corpus.decisions.find((d) => d.id === target.slice("decision/".length));
-      if (!d) return add("error", "ref-dangling", ref, `${token}: решения нет`);
+      if (!d) return fail("ref-dangling", ref, `${token}: решения нет`);
       if (d.status === "active" || own.corpus.decisions.some((o) => o.file === ref.file)) return;
-      if (d.status === "revoked") return add("error", "decision-inactive-ref", ref, `${token}: решение отменено`);
+      if (d.status === "revoked") return fail("decision-inactive-ref", ref, `${token}: решение отменено`);
       const chain = replacements(ctx.corpus, d);
       const next = (chain.at(-1) ?? d).supersededBy;
       const tail = next && !ctx.corpus.decisions.some((e) => e.id === next) ? [next] : [];
-      return add("error", "decision-inactive-ref", ref, `${token}: решение заменено: ${[d.id, ...chain.map((c) => c.id), ...tail].join(" → ")}`, chain.map((c) => ({ file: c.file, line: 1 })));
+      return fail("decision-inactive-ref", ref, `${token}: решение заменено: ${[d.id, ...chain.map((c) => c.id), ...tail].join(" → ")}`, chain.map((c) => ({ file: c.file, line: 1 })));
     }
     const result = resolve(local ? views.get(local)! : ctx.main, target);
-    if (result.ok) return;
+    if (result.ok) {
+      if (test) ctx.covered.add(result.key);
+      return;
+    }
+    const elsewhere = open.filter((c) => c !== local).flatMap((c) => {
+      const r = resolve(views.get(c)!, target);
+      return r.ok ? [{ id: c.id, at: r.at }] : [];
+    });
+    if (test && elsewhere.length) return;
     if (result.missing) {
       const { cap, slug: wanted } = result.missing;
       const renames = [...archived, ...(local ? [local] : [])].flatMap((c) => c.deltas).filter((d) => d.op === "renamed" && d.capability === cap);
@@ -162,17 +184,13 @@ export const check = (corpora: Corpus[]): Finding[] => {
       let current = wanted;
       for (let d; (d = renames.find((r) => slug(r.requirement) === current)) && !chain.includes(d); current = slug(d.to!)) chain.push(d);
       if (chain.length)
-        return add("error", "ref-dangling", ref, `${token}: требование переименовано в spec:${external ? `${external[1]}:` : ""}${cap}/${current} (${chain.map((d) => d.change.id).join(", ")})`, chain);
+        return fail("ref-dangling", ref, `${token}: требование переименовано в spec:${external ? `${external[1]}:` : ""}${cap}/${current} (${chain.map((d) => d.change.id).join(", ")})`, chain);
       const removed = archived.flatMap((c) => c.deltas).find((d) => d.op === "removed" && d.capability === cap && slug(d.requirement) === wanted);
-      if (removed) return add("error", "ref-archived", ref, `${token}: требование удалено архивным изменением ${removed.change.id}`, [removed]);
+      if (removed) return fail("ref-archived", ref, `${token}: требование удалено архивным изменением ${removed.change.id}`, [removed]);
     }
-    const elsewhere = open.filter((c) => c !== local).flatMap((c) => {
-      const r = resolve(views.get(c)!, target);
-      return r.ok ? [{ id: c.id, at: r.at }] : [];
-    });
     if (elsewhere.length)
-      return add("error", "ref-dangling", ref, `${token}: ${result.message}; есть в открытом изменении ${elsewhere.map((e) => e.id).join(", ")}`, elsewhere.map((e) => e.at));
-    add("error", "ref-dangling", ref, `${token}: ${result.message}`);
+      return fail("ref-dangling", ref, `${token}: ${result.message}; есть в открытом изменении ${elsewhere.map((e) => e.id).join(", ")}`, elsewhere.map((e) => e.at));
+    fail("ref-dangling", ref, `${token}: ${result.message}`);
   }
 
   const key = (f: Finding) => [f.file ?? "", String(f.line ?? 0).padStart(9, "0"), f.rule];

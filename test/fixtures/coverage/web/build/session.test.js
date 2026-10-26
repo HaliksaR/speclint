@@ -1,0 +1,1 @@
+it("spec:ghost/built", () => {});
