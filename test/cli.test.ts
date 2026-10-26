@@ -31,7 +31,7 @@ describe("speclint CLI", () => {
       version: pkg.version,
       status: "ok",
       findings: [],
-      summary: { errors: 0, warnings: 0, infos: 0, files: 6 },
+      summary: { errors: 0, warnings: 0, infos: 0, files: 7 },
     });
     expect(r.status).toBe(0);
   });

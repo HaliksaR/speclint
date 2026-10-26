@@ -10,6 +10,10 @@ const report = (name: string) => {
   const r = run(name, "--format", "json");
   return { ...JSON.parse(r.stdout), code: r.status };
 };
+const uncovered = (name: string) => {
+  const r = report(name);
+  return { ...r, findings: r.findings.filter((f: { rule: string }) => f.rule !== "scenario-untested") };
+};
 const at = (level: string, rule: string, file: string, line: number, message: string, related: [string, number][] = []) => ({
   level,
   rule,
@@ -24,20 +28,20 @@ describe("a consistent OpenSpec repository", () => {
     const r = report("clean");
     expect(r.findings).toEqual([]);
     expect(r.status).toBe("ok");
-    expect(r.summary).toEqual({ errors: 0, warnings: 0, infos: 0, files: 6 });
+    expect(r.summary).toEqual({ errors: 0, warnings: 0, infos: 0, files: 7 });
     expect(r.code).toBe(0);
   });
 
   it("prints a one-line summary in text format", () => {
     const r = run("clean");
-    expect(r.stdout.trim()).toBe("speclint: ошибок 0, предупреждений 0, файлов 6");
+    expect(r.stdout.trim()).toBe("speclint: ошибок 0, предупреждений 0, файлов 7");
     expect(r.status).toBe(0);
   });
 });
 
 describe("references", () => {
   const readme = "openspec/README.md";
-  const findings = () => report("refs").findings;
+  const findings = () => uncovered("refs").findings;
 
   it("reports addresses that do not resolve", () => {
     expect(findings()).toEqual(
@@ -103,9 +107,9 @@ describe("references", () => {
   });
 
   it("reports nothing else and exits 1", () => {
-    const r = report("refs");
+    const r = uncovered("refs");
     expect(r.findings).toHaveLength(11);
-    expect(r.summary).toEqual({ errors: 10, warnings: 0, infos: 1, files: 9 });
+    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 1, files: 9 });
     expect(r.status).toBe("findings");
     expect(r.code).toBe(1);
   });
@@ -116,7 +120,7 @@ describe("deltas and addresses", () => {
   const delta = (change: string, cap = "auth") => `openspec/changes/${change}/specs/${cap}/spec.md`;
 
   it("reports the whole corpus in file and line order", () => {
-    expect(report("deltas").findings).toEqual([
+    expect(uncovered("deltas").findings).toEqual([
       at("warning", "delta-overlap", delta("add-2fa"), 3, "требование auth/Two Factor трогает и изменение tune-2fa", [[delta("tune-2fa"), 3]]),
       at("warning", "delta-overlap", delta("add-2fa"), 9, "требование auth/Sign In трогает и изменение shorten-timeout", [[delta("shorten-timeout"), 2]]),
       at("error", "delta-target-exists", delta("add-2fa"), 9, "ADDED auth/Sign In: требование уже есть"),
@@ -136,7 +140,7 @@ describe("a monorepo with several roots in speclint.json", () => {
   const billing = "services/billing/openspec";
 
   it("checks only configured roots, resolves addresses across them by space and keeps deltas per root", () => {
-    const r = report("monorepo");
+    const r = uncovered("monorepo");
     expect(r.findings).toEqual([
       at("error", "ref-dangling", `${auth}/README.md`, 5, "spec:invoices/create: capability нет"),
       at("error", "ref-dangling", `${billing}/README.md`, 5, "spec:auth:session/logout: требования нет в session"),
@@ -148,7 +152,7 @@ describe("a monorepo with several roots in speclint.json", () => {
       ]),
       at("info", "ref-external-unchecked", `${billing}/README.md`, 9, "spec:identity:users/profile: внешний адрес не проверяется до M5"),
     ]);
-    expect(r.summary).toEqual({ errors: 4, warnings: 0, infos: 1, files: 10 });
+    expect(r.summary).toEqual({ errors: 4, warnings: 5, infos: 1, files: 10 });
     expect(r.code).toBe(1);
   });
 });
@@ -158,7 +162,7 @@ describe("a decision registry in several roots", () => {
   const decision = (id: string) => `shared/decisions/${id}.md`;
 
   it("reports inactive, dangling and malformed decisions and resolves them across roots", () => {
-    const r = report("decisions");
+    const r = uncovered("decisions");
     expect(r.findings).toEqual([
       at("error", "decision-inactive-ref", app, 4, "spec:shared:decision/0001-rest: решение заменено: 0001-rest → 0002-grpc → 0003-events", [
         [decision("0002-grpc"), 1],
@@ -175,7 +179,7 @@ describe("a decision registry in several roots", () => {
       at("error", "decision-status-invalid", decision("0010-half"), 1, "решение 0010-half: superseded без superseded-by"),
       at("error", "decision-status-invalid", decision("0011-mixed"), 1, "решение 0011-mixed: superseded-by при статусе active"),
     ]);
-    expect(r.summary).toEqual({ errors: 10, warnings: 1, infos: 0, files: 14 });
+    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 0, files: 14 });
     expect(r.code).toBe(1);
   });
 });
@@ -199,9 +203,46 @@ describe("launch errors", () => {
     expect(r.status).toBe(2);
   });
 
+  it("exits 2 when tests in speclint.json is not a list of globs", () => {
+    const r = run("config-bad-tests");
+    expect(r.stderr).toContain("tests — список glob-шаблонов");
+    expect(r.status).toBe(2);
+  });
+
   it("exits 2 when two roots share a space", () => {
     const r = run("config-duplicate-space");
     expect(r.stderr).toContain("пространство core у двух корней");
     expect(r.status).toBe(2);
+  });
+});
+
+describe("coverage by test marks", () => {
+  it("reads marks from test files in four languages, skips non-test and vendored files and warns on untested scenarios", () => {
+    const r = report("coverage");
+    expect(r.findings).toEqual([
+      at("error", "test-ref-dangling", "backend/src/test/kotlin/SignInTest.kt", 6, "spec:auth/login: требование переименовано в spec:auth/sign-in (rename-login)", [
+        ["openspec/changes/archive/2026-01-10-rename-login/specs/auth/spec.md", 2],
+      ]),
+      at("error", "test-ref-dangling", "ios/AppTests/SessionTests.swift", 4, "spec:auth/legacy-login: требование удалено архивным изменением drop-legacy", [
+        ["openspec/changes/archive/2026-03-01-drop-legacy/specs/auth/spec.md", 2],
+      ]),
+      at("error", "test-ref-dangling", "ml/tests/test_session.py", 1, "spec:auth/session-timout: требования нет в auth"),
+      at("info", "ref-external-unchecked", "ml/tests/test_session.py", 6, "spec:billing:invoices/create: внешний адрес не проверяется до M5"),
+      at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 26, "сценарий auth/session-timeout#absolute-timeout без теста"),
+      at("error", "test-ref-dangling", "web/src/session.test.ts", 5, "spec:decision/0001-cookies: решение заменено: 0001-cookies → 0002-tokens", [
+        ["openspec/decisions/0002-tokens.md", 1],
+      ]),
+    ]);
+    expect(r.summary).toEqual({ errors: 4, warnings: 1, infos: 1, files: 12 });
+    expect(r.code).toBe(1);
+  });
+
+  it("takes test files from tests in speclint.json and gives a mark without space to the nearest root", () => {
+    const r = report("coverage-monorepo");
+    expect(r.findings).toEqual([
+      at("error", "test-ref-dangling", "e2e/checks/flow.test.ts", 2, "spec:invoices/create: тест вне корней, нужен адрес с пространством"),
+      at("error", "test-ref-dangling", "services/auth/checks/SignInCheck.kt", 5, "spec:invoices/create: capability нет"),
+    ]);
+    expect(r.summary).toEqual({ errors: 2, warnings: 0, infos: 0, files: 5 });
   });
 });

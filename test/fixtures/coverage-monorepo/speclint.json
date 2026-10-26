@@ -1,0 +1,7 @@
+{
+  "roots": [
+    { "path": "services/auth/openspec", "space": "auth" },
+    { "path": "services/billing/openspec", "space": "billing" }
+  ],
+  "tests": ["**/checks/**"]
+}

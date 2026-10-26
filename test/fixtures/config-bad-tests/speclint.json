@@ -1,0 +1,4 @@
+{
+  "roots": [{ "path": "openspec", "space": "app" }],
+  "tests": "**/test/**"
+}
