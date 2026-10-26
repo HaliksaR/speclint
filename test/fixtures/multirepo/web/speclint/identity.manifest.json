@@ -1,5 +1,5 @@
 {
-  "speclint": 1,
+  "speclint": 2,
   "version": "1.4.0",
   "roots": [
     {
@@ -21,6 +21,10 @@
             {
               "address": "auth/log-in#valid-password",
               "name": "Valid password",
+              "steps": [
+                "WHEN the password is valid",
+                "THEN the user is signed in"
+              ],
               "covered": true
             }
           ]
@@ -39,16 +43,28 @@
             {
               "address": "auth/session-timeout#absolute-timeout",
               "name": "Absolute timeout",
+              "steps": [
+                "WHEN 12 hours pass",
+                "THEN the session ends"
+              ],
               "covered": false
             },
             {
               "address": "auth/session-timeout#idle-timeout",
               "name": "Idle timeout",
+              "steps": [
+                "WHEN the user is idle for 30 minutes",
+                "THEN the session ends"
+              ],
               "covered": true
             },
             {
               "address": "auth/session-timeout#remember-me",
               "name": "Remember me",
+              "steps": [
+                "WHEN the user chose remember me",
+                "THEN the session lasts 30 days"
+              ],
               "covered": false
             }
           ]

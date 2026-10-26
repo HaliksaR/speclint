@@ -74,7 +74,7 @@ const loadDependency = (space: string, d: any): Dependency => {
   } catch (e) {
     return fail(`нечитаемый манифест ${space}: ${d.manifest}: ${(e as Error).message}`);
   }
-  if (json?.speclint !== 1) fail(`манифест ${space}: формат ${json?.speclint}, ожидается 1`);
+  if (json?.speclint !== 1 && json?.speclint !== 2) fail(`манифест ${space}: формат ${json?.speclint}, ожидается 1 или 2`);
   if (json.version !== d.version) fail(`манифест ${space}: версия ${json.version}, зафиксирована ${d.version}`);
   const loaded = fromManifest(json, space, d.manifest);
   return loaded ? { ...none, ...loaded } : { ...none, missing: `в манифесте ${d.manifest} нет пространства ${space}` };
@@ -91,8 +91,8 @@ if (manifest) {
 }
 const deps = manifest ? [] : Object.entries(dependencies).map(([space, d]) => loadDependency(space, d));
 const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корень не найден: ${path}/${root.path}`));
-const { marks, files: testFiles } = loadMarks(path, roots, tests);
-const { findings, covered } = check(corpora, marks, deps);
+const { marks, files: testFiles, literals } = loadMarks(path, roots, tests);
+const { findings, covered } = check(corpora, marks, deps, literals);
 if (manifest) {
   process.stdout.write(`${toManifest(corpora, covered, marks, release!)}\n`);
   process.exit(0);

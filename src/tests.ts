@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import type { Root, TestMark } from "./model.js";
 import { TOKEN } from "./openspec.js";
+import { literals } from "./literals.js";
 
 const SKIP = new Set(["node_modules", "build", "dist", "out", "target", "Pods", "Carthage", "DerivedData", "venv", "__pycache__"]);
 
@@ -30,10 +31,12 @@ export const loadMarks = (base: string, roots: Root[], tests: string[] | null) =
       ? roots[0]
       : owners.filter((o) => o.dir === "." || file.startsWith(`${o.dir}/`)).sort((a, b) => b.dir.length - a.dir.length)[0]?.root ?? null;
   const testFiles = files(base, "").filter((f) => patterns.some((p) => p.test(f)));
-  const marks: TestMark[] = testFiles.flatMap((file) =>
-    readFileSync(join(base, file), "utf8")
-      .split(/\r?\n/)
-      .flatMap((text, i) => [...text.matchAll(TOKEN)].map((m) => ({ address: m[1], root: owner(file), file, line: i + 1 }))),
-  );
-  return { marks, files: testFiles.length };
+  const strings = new Map<string, Set<string>>();
+  const marks: TestMark[] = testFiles.flatMap((file) => {
+    const text = readFileSync(join(base, file), "utf8");
+    const found = text.split(/\r?\n/).flatMap((line, i) => [...line.matchAll(TOKEN)].map((m) => ({ address: m[1], root: owner(file), file, line: i + 1 })));
+    if (found.length) strings.set(file, new Set(literals(text, file).map((l) => l.trim())));
+    return found;
+  });
+  return { marks, files: testFiles.length, literals: strings };
 };

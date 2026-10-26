@@ -1,0 +1,4 @@
+{
+  "roots": [{ "path": "openspec", "space": "web" }],
+  "dependencies": { "identity": { "manifest": "speclint/identity.manifest.json", "version": "1.4.0" } }
+}

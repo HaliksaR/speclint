@@ -1,4 +1,4 @@
-import { slug, type Change, type Corpus, type Delta, type TestMark } from "./model.js";
+import { slug, steps, type Change, type Corpus, type Delta, type TestMark } from "./model.js";
 
 const byCode = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const sortBy = <T>(items: T[], key: (item: T) => string) => [...items].sort((a, b) => byCode(key(a), key(b)));
@@ -23,6 +23,7 @@ export const toManifest = (corpora: Corpus[], covered: Map<Corpus, Set<string>>,
       const scenarios = r.scenarios.map((s) => ({
         address: `${address}#${s.slug}`,
         name: s.name,
+        steps: steps(s),
         covered: done.has(address) || done.has(`${address}#${s.slug}`),
       }));
       return { address, status: "active", name: r.name, scenarios: sortBy(scenarios, (s) => s.address) };
@@ -43,7 +44,7 @@ export const toManifest = (corpora: Corpus[], covered: Map<Corpus, Set<string>>,
     const space = a.match(/^([a-z0-9-]+):/)?.[1];
     return space !== undefined && !spaces.has(space);
   });
-  return JSON.stringify({ speclint: 1, version: release, roots, marks: [...new Set(external)].sort(byCode) }, null, 2);
+  return JSON.stringify({ speclint: 2, version: release, roots, marks: [...new Set(external)].sort(byCode) }, null, 2);
 };
 
 export const fromManifest = (manifest: any, space: string, file: string) => {
@@ -66,7 +67,7 @@ export const fromManifest = (manifest: any, space: string, file: string) => {
       name: q.name,
       slug: lastOf(q.address),
       line: 0,
-      scenarios: q.scenarios.map((s: any) => ({ name: s.name, slug: s.address.split("#")[1], line: 0, steps: [] })),
+      scenarios: q.scenarios.map((s: any) => ({ name: s.name, slug: s.address.split("#")[1], line: 0, steps: s.steps ?? [] })),
     })),
     changes,
     references: [],

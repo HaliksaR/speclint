@@ -1,0 +1,93 @@
+{
+  "speclint": 1,
+  "version": "1.4.0",
+  "roots": [
+    {
+      "space": "identity",
+      "capabilities": [
+        "auth"
+      ],
+      "requirements": [
+        {
+          "address": "auth/legacy-login",
+          "status": "removed",
+          "change": "drop-legacy"
+        },
+        {
+          "address": "auth/log-in",
+          "status": "active",
+          "name": "Log In",
+          "scenarios": [
+            {
+              "address": "auth/log-in#valid-password",
+              "name": "Valid password",
+              "covered": true
+            }
+          ]
+        },
+        {
+          "address": "auth/login",
+          "status": "renamed",
+          "change": "rename-login",
+          "to": "auth/log-in"
+        },
+        {
+          "address": "auth/session-timeout",
+          "status": "active",
+          "name": "Session Timeout",
+          "scenarios": [
+            {
+              "address": "auth/session-timeout#absolute-timeout",
+              "name": "Absolute timeout",
+              "covered": false
+            },
+            {
+              "address": "auth/session-timeout#idle-timeout",
+              "name": "Idle timeout",
+              "covered": true
+            },
+            {
+              "address": "auth/session-timeout#remember-me",
+              "name": "Remember me",
+              "covered": false
+            }
+          ]
+        }
+      ],
+      "changes": [
+        {
+          "id": "add-2fa",
+          "archived": false
+        },
+        {
+          "id": "drop-legacy",
+          "archived": true
+        },
+        {
+          "id": "rename-login",
+          "archived": true
+        }
+      ],
+      "decisions": [
+        {
+          "address": "decision/0003-cookies",
+          "status": "revoked",
+          "supersededBy": null
+        },
+        {
+          "address": "decision/0007-jwt",
+          "status": "superseded",
+          "supersededBy": "decision/0012-paseto"
+        },
+        {
+          "address": "decision/0012-paseto",
+          "status": "active",
+          "supersededBy": null
+        }
+      ]
+    }
+  ],
+  "marks": [
+    "web:checkout/pay#card"
+  ]
+}
