@@ -1,0 +1,44 @@
+{
+  "speclint": 2,
+  "version": "1.2.0",
+  "roots": [
+    {
+      "space": "org",
+      "capabilities": [
+        "governance"
+      ],
+      "requirements": [
+        {
+          "address": "governance/decision-log",
+          "status": "active",
+          "name": "Decision log",
+          "scenarios": [
+            {
+              "address": "governance/decision-log#recorded",
+              "name": "Recorded",
+              "steps": [
+                "WHEN a decision is made",
+                "THEN it is recorded"
+              ],
+              "covered": true
+            }
+          ]
+        }
+      ],
+      "changes": [],
+      "decisions": [
+        {
+          "address": "decision/0009-soap",
+          "status": "superseded",
+          "supersededBy": "decision/0010-rest"
+        },
+        {
+          "address": "decision/0010-rest",
+          "status": "active",
+          "supersededBy": null
+        }
+      ]
+    }
+  ],
+  "marks": []
+}

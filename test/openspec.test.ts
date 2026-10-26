@@ -111,7 +111,7 @@ describe("references", () => {
   it("reports nothing else and exits 1", () => {
     const r = uncovered("refs");
     expect(r.findings).toHaveLength(11);
-    expect(r.summary).toEqual({ errors: 11, warnings: 2, infos: 0, files: 9 });
+    expect(r.summary).toEqual({ errors: 11, warnings: 0, infos: 1, files: 9 });
     expect(r.status).toBe("findings");
     expect(r.code).toBe(1);
   });
@@ -154,7 +154,7 @@ describe("a monorepo with several roots in speclint.json", () => {
       ]),
       at("error", "dependency-missing", `${billing}/README.md`, 9, "spec:identity:users/profile: пространство identity не объявлено в dependencies"),
     ]);
-    expect(r.summary).toEqual({ errors: 5, warnings: 5, infos: 0, files: 10 });
+    expect(r.summary).toEqual({ errors: 5, warnings: 0, infos: 2, files: 10 });
     expect(r.code).toBe(1);
   });
 });
@@ -181,7 +181,7 @@ describe("a decision registry in several roots", () => {
       at("error", "decision-status-invalid", decision("0010-half"), 1, "решение 0010-half: superseded без superseded-by"),
       at("error", "decision-status-invalid", decision("0011-mixed"), 1, "решение 0011-mixed: superseded-by при статусе active"),
     ]);
-    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 0, files: 14 });
+    expect(r.summary).toEqual({ errors: 10, warnings: 1, infos: 1, files: 14 });
     expect(r.code).toBe(1);
   });
 });
@@ -276,10 +276,9 @@ describe("several repositories linked by published manifests", () => {
       at("warning", "scenario-untested-anywhere", "openspec/specs/checkout/spec.md", 15, "сценарий checkout/pay#wallet без теста ни в одном известном репозитории"),
       { ...at("warning", "scenario-steps-missing", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#absolute-timeout: шаг «WHEN 12 hours pass» не найден среди строк тестов", [["src/checkout.test.ts", 1]]), line: null },
       { ...at("warning", "scenario-steps-missing", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#absolute-timeout: шаг «THEN the session ends» не найден среди строк тестов", [["src/checkout.test.ts", 1]]), line: null },
-      { ...at("warning", "scenario-untested-anywhere", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#remember-me без теста ни в одном известном репозитории"), line: null },
       at("error", "test-ref-dangling", "src/checkout.test.ts", 2, `spec:identity:auth/log-out: требования нет в auth${dep}`),
     ]);
-    expect(r.summary).toEqual({ errors: 10, warnings: 4, infos: 1, files: 4 });
+    expect(r.summary).toEqual({ errors: 10, warnings: 3, infos: 1, files: 4 });
     expect(r.code).toBe(1);
   });
 
@@ -328,5 +327,73 @@ describe("scenario steps among string literals of tests", () => {
     ]);
     expect(r.summary).toEqual({ errors: 0, warnings: 2, infos: 0, files: 6 });
     expect(r.code).toBe(0);
+  });
+});
+
+describe("noise on repositories without marks", () => {
+  it("sums up untested scenarios of a root without marks in one info and takes a spec: string with no such capability for data", () => {
+    const r = report("unmarked");
+    expect(r.findings).toEqual([
+      { ...at("info", "scenario-untested", "openspec", 0, "сценариев без теста: 3; в тестах нет ни одной метки на этот корень"), line: null },
+      at("error", "test-ref-dangling", "src/graph.test.ts", 2, "spec:search/legacy: требования нет в search"),
+    ]);
+    expect(r.code).toBe(1);
+  });
+});
+
+describe("the ticketly organization of five repositories", () => {
+  const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
+  const lines = (name: string) => run(`ticketly/${name}`).stdout.trim().split("\n");
+  const booking = "services/booking/openspec";
+  const design = `${booking}/changes/add-waitlist/design.md`;
+
+  it("keeps committed manifests equal to speclint manifest", () => {
+    for (const [repo, release, copy] of [
+      ["org", "1.2.0", "platform/speclint/org.manifest.json"],
+      ["web", "2.0.0", "platform/speclint/web.manifest.json"],
+      ["platform", "3.0.0", "android/speclint/platform.manifest.json"],
+      ["platform", "3.0.0", "ios/speclint/platform.manifest.json"],
+      ["platform", "3.0.0", "web/speclint/platform.manifest.json"],
+    ])
+      expect(cli("manifest", fixture(`ticketly/${repo}`), "--release", release).stdout).toBe(readFileSync(fixture(`ticketly/${copy}`), "utf8"));
+  });
+
+  it("finds all 17 defects of platform, sees coverage in the web manifest and skips file:spec:", () => {
+    expect(lines("platform")).toEqual([
+      `${design}:4: error ref-dangling: spec:reservations/reserve-seats: требование переименовано в spec:reservations/hold-seats (rename-hold)`,
+      `${design}:5: error ref-archived: spec:catalog/legacy-search: требование удалено архивным изменением drop-legacy`,
+      `${design}:6: error decision-inactive-ref: spec:decision/0002-jwt: решение заменено: 0002-jwt → 0003-paseto`,
+      `${design}:9: error ref-dangling: spec:payments:charges/refund-everything: требования нет в charges`,
+      `${design}:11: error decision-inactive-ref: spec:org:decision/0009-soap: решение заменено: 0009-soap → 0010-rest; зависимость org 1.2.0`,
+      `${design}:14: error ref-archived: spec:change/rename-hold: изменение в архиве`,
+      `${design}:17: error ref-dangling: spec:catalog/nonexistent-in-code-block: требования нет в catalog`,
+      `${booking}/changes/add-waitlist/specs/reservations/spec.md:12: warning delta-overlap: требование reservations/Cancel reservation трогает и изменение refund-policy`,
+      `${booking}/changes/dup-add/specs/catalog/spec.md:3: error delta-target-exists: ADDED catalog/List events: требование уже есть`,
+      `${booking}/changes/fix-typo/specs/catalog/spec.md:3: error delta-target-missing: MODIFIED catalog/List event: требования нет`,
+      `${booking}/changes/refund-policy/specs/reservations/spec.md:3: warning delta-overlap: требование reservations/Cancel reservation трогает и изменение add-waitlist`,
+      `${booking}/decisions/0003-paseto.md:1: warning decision-no-rationale: решение 0003-paseto без обоснования`,
+      `${booking}/decisions/0004-bad.md:1: error decision-status-invalid: решение 0004-bad: статус superseeded, ожидается active | superseded | revoked`,
+      `${booking}/specs/catalog/spec.md:11: warning scenario-untested-anywhere: сценарий catalog/list-events#upcoming-only без теста ни в одном известном репозитории`,
+      `${booking}/specs/catalog/spec.md:15: error address-collision: адрес catalog/list-events у двух требований: List events, List Events!`,
+      `${booking}/specs/catalog/spec.md:18: warning scenario-untested-anywhere: сценарий catalog/list-events#any без теста ни в одном известном репозитории`,
+      `${booking}/specs/reservations/spec.md:15: warning scenario-steps-missing: сценарий reservations/hold-seats#hold-expires: шаг «THEN the seats return to sale» не найден среди строк тестов; похожая строка: «THEN the seats return to Sale»`,
+      `services/booking/src/test/kotlin/ReservationsTest.kt:26: error test-ref-dangling: spec:reservations/old-thing: требования нет в reservations`,
+      `services/payments/tests/test_charges.py:4: error test-ref-dangling: spec:charges/ghost: требования нет в charges`,
+      "speclint: ошибок 13, предупреждений 6, файлов 22",
+    ]);
+  });
+
+  it("finds the defects of consumers without repeating untested scenarios of the provider they do not touch", () => {
+    expect(lines("android")).toEqual([
+      "app/src/test/kotlin/TicketsTest.kt:8: error test-ref-dangling: spec:booking:reservations/reserve-seats: требование переименовано в spec:booking:reservations/hold-seats (rename-hold); зависимость booking 3.0.0",
+      "app/src/test/kotlin/TicketsTest.kt:11: error dependency-missing: spec:payments:charges/refund: пространство payments не объявлено в dependencies",
+      "speclint: ошибок 2, предупреждений 0, файлов 3",
+    ]);
+    expect(lines("ios")).toEqual([
+      "speclint/platform.manifest.json:: warning scenario-steps-missing: сценарий booking:reservations/cancel-reservation#free-cancellation: шаг «THEN the full price is refunded» не найден среди строк тестов",
+      "speclint: ошибок 0, предупреждений 1, файлов 3",
+    ]);
+    expect(lines("web")).toEqual(["speclint: ошибок 0, предупреждений 0, файлов 3"]);
+    expect(lines("org")).toEqual(["speclint: ошибок 0, предупреждений 0, файлов 4"]);
   });
 });

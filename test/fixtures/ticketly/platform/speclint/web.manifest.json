@@ -1,0 +1,35 @@
+{
+  "speclint": 2,
+  "version": "2.0.0",
+  "roots": [
+    {
+      "space": "web",
+      "capabilities": [
+        "checkout"
+      ],
+      "requirements": [
+        {
+          "address": "checkout/pay",
+          "status": "active",
+          "name": "Pay",
+          "scenarios": [
+            {
+              "address": "checkout/pay#card",
+              "name": "Card",
+              "steps": [
+                "WHEN the client pays by card",
+                "THEN the order is confirmed"
+              ],
+              "covered": true
+            }
+          ]
+        }
+      ],
+      "changes": [],
+      "decisions": []
+    }
+  ],
+  "marks": [
+    "payments:charges/refund#partial-refund"
+  ]
+}

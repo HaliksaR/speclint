@@ -103,7 +103,7 @@ const deltas = (change: Change, capability: string, file: string, text: string):
   });
 };
 
-export const TOKEN = /(?<![\p{L}\p{N}_\-/])spec:([\p{L}\p{N}_\-/#:]+)/gu;
+export const TOKEN = /(?<![\p{L}\p{N}_\-/:])spec:([\p{L}\p{N}_\-/#:]+)/gu;
 
 export const loadOpenSpec = (base: string, root: Root): Corpus | null => {
   const rootDir = join(base, root.path);
