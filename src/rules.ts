@@ -51,7 +51,7 @@ const resolve = (view: View, target: string): Resolved => {
 };
 
 export type Dependency = { space: string; label: string; unchecked: boolean; missing: string | null; corpus: Corpus | null; covered: Set<string>; marks: string[] };
-type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; hits: Map<string, Reference[]>; known: Set<string>; dep: Dependency | null };
+type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; hits: Map<string, Reference[]>; known: Set<string>; touched: Set<string>; dep: Dependency | null };
 
 export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = [], literals = new Map<string, Set<string>>()) => {
   const findings: Finding[] = [];
@@ -119,7 +119,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       if (chain.at(-1) === d) add("error", "decision-supersede-cycle", at, `цикл замен: ${[d, ...chain].map((c) => c.id).join(" → ")}`);
     }
 
-    return { corpus, open, archived, main, views, covered: new Set<string>(), hits: new Map(), known: new Set<string>(), dep: null };
+    return { corpus, open, archived, main, views, covered: new Set<string>(), hits: new Map(), known: new Set<string>(), touched: new Set<string>(), dep: null };
   });
 
   const manifests = deps.flatMap((dep): Context[] => {
@@ -128,7 +128,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     const main = mainView(corpus);
     const open = corpus.changes.filter((c) => !c.archived);
     const archived = corpus.changes.filter((c) => c.archived);
-    return [{ corpus, open, archived, main, views: new Map(open.map((c) => [c, main])), covered: new Set<string>(), hits: new Map(), known: new Set(dep.covered), dep }];
+    return [{ corpus, open, archived, main, views: new Map(open.map((c) => [c, main])), covered: new Set<string>(), hits: new Map(), known: new Set(dep.covered), touched: new Set<string>(), dep }];
   });
   const all = [...contexts, ...manifests];
   for (const dep of deps)
@@ -151,7 +151,8 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
   }
   const fold = (s: string) => s.toLowerCase().replaceAll("ё", "е").replace(/\s+/g, " ");
-  for (const { corpus, covered, hits, known: elsewhere, dep } of all)
+  for (const { corpus, covered, hits, known: elsewhere, touched, dep } of all) {
+    let unmarked = 0;
     for (const r of corpus.requirements)
       for (const s of r.scenarios) {
         const req = `${r.capability.id}/${r.slug}`;
@@ -165,10 +166,17 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
           add("warning", "scenario-steps-missing", at, `сценарий ${dep ? `${dep.space}:` : ""}${address}: шаг «${step}» не найден среди строк тестов${near ? `; похожая строка: «${near}»` : ""}`, refs);
         }
         if ([covered, elsewhere].some((set) => set.has(req) || set.has(address))) continue;
-        if (dep) add("warning", "scenario-untested-anywhere", at, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
+        if (dep) {
+          if ([r.capability.id, req, address].some((k) => touched.has(k)))
+            add("warning", "scenario-untested-anywhere", at, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
+        } else if (!covered.size && !elsewhere.size) unmarked++;
         else if (manifests.length) add("warning", "scenario-untested-anywhere", at, `сценарий ${address} без теста ни в одном известном репозитории`);
         else add("warning", "scenario-untested", at, `сценарий ${address} без теста`);
       }
+    if (unmarked)
+      add("info", manifests.length ? "scenario-untested-anywhere" : "scenario-untested", { file: corpus.root.path, line: null },
+        `сценариев без теста: ${unmarked}; в тестах нет ни одной метки на этот корень`);
+  }
 
   function checkReference(own: Context, ref: Reference, test: boolean) {
     const token = `spec:${ref.address}`;
@@ -203,6 +211,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     }
     const result = resolve(local ? views.get(local)! : ctx.main, target);
     if (result.ok) {
+      ctx.touched.add(result.key);
       if (test) {
         ctx.covered.add(result.key);
         ctx.hits.set(result.key, [...(ctx.hits.get(result.key) ?? []), ref]);
@@ -213,7 +222,11 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       const r = resolve(views.get(c)!, target);
       return r.ok ? [{ id: c.id, at: r.at }] : [];
     });
-    if (test && elsewhere.length) return;
+    const unknown = (c: Context) => {
+      const r = resolve(c.main, target);
+      return !r.ok && r.message === "capability нет";
+    };
+    if (test && (elsewhere.length || (!external && all.every(unknown)))) return;
     if (result.missing) {
       const { cap, slug: wanted } = result.missing;
       const renames = [...archived, ...(local ? [local] : [])].flatMap((c) => c.deltas).filter((d) => d.op === "renamed" && d.capability === cap);

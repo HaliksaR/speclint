@@ -1,0 +1,8 @@
+{
+  "roots": [
+    {
+      "path": "openspec",
+      "space": "org"
+    }
+  ]
+}

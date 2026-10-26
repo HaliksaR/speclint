@@ -1,0 +1,207 @@
+{
+  "speclint": 2,
+  "version": "3.0.0",
+  "roots": [
+    {
+      "space": "booking",
+      "capabilities": [
+        "catalog",
+        "reservations"
+      ],
+      "requirements": [
+        {
+          "address": "catalog/legacy-search",
+          "status": "removed",
+          "change": "drop-legacy"
+        },
+        {
+          "address": "catalog/list-events",
+          "status": "active",
+          "name": "List events",
+          "scenarios": [
+            {
+              "address": "catalog/list-events#upcoming-only",
+              "name": "Upcoming only",
+              "steps": [
+                "WHEN the client opens the catalog",
+                "THEN only upcoming events are listed"
+              ],
+              "covered": false
+            }
+          ]
+        },
+        {
+          "address": "catalog/list-events",
+          "status": "active",
+          "name": "List Events!",
+          "scenarios": [
+            {
+              "address": "catalog/list-events#any",
+              "name": "Any",
+              "steps": [
+                "WHEN x",
+                "THEN y"
+              ],
+              "covered": false
+            }
+          ]
+        },
+        {
+          "address": "reservations/cancel-reservation",
+          "status": "active",
+          "name": "Cancel reservation",
+          "scenarios": [
+            {
+              "address": "reservations/cancel-reservation#free-cancellation",
+              "name": "Free cancellation",
+              "steps": [
+                "WHEN the client cancels 24 hours before the event",
+                "THEN the full price is refunded"
+              ],
+              "covered": true
+            }
+          ]
+        },
+        {
+          "address": "reservations/hold-seats",
+          "status": "active",
+          "name": "Hold seats",
+          "scenarios": [
+            {
+              "address": "reservations/hold-seats#hold-expires",
+              "name": "Hold expires",
+              "steps": [
+                "GIVEN a hold older than 10 minutes",
+                "WHEN the expiry job runs",
+                "THEN the seats return to sale"
+              ],
+              "covered": true
+            },
+            {
+              "address": "reservations/hold-seats#seats-held",
+              "name": "Seats held",
+              "steps": [
+                "WHEN the client selects free seats",
+                "THEN the seats are held for 10 minutes"
+              ],
+              "covered": true
+            }
+          ]
+        },
+        {
+          "address": "reservations/reserve-seats",
+          "status": "renamed",
+          "change": "rename-hold",
+          "to": "reservations/hold-seats"
+        },
+        {
+          "address": "reservations/тайм-аут-брони",
+          "status": "active",
+          "name": "Тайм-аут брони",
+          "scenarios": [
+            {
+              "address": "reservations/тайм-аут-брони#истечение",
+              "name": "Истечение",
+              "steps": [
+                "WHEN срок брони истёк",
+                "THEN бронь снимается"
+              ],
+              "covered": true
+            }
+          ]
+        }
+      ],
+      "changes": [
+        {
+          "id": "add-waitlist",
+          "archived": false
+        },
+        {
+          "id": "drop-legacy",
+          "archived": true
+        },
+        {
+          "id": "dup-add",
+          "archived": false
+        },
+        {
+          "id": "fix-typo",
+          "archived": false
+        },
+        {
+          "id": "refund-policy",
+          "archived": false
+        },
+        {
+          "id": "rename-hold",
+          "archived": true
+        }
+      ],
+      "decisions": [
+        {
+          "address": "decision/0001-postgres",
+          "status": "active",
+          "supersededBy": null
+        },
+        {
+          "address": "decision/0002-jwt",
+          "status": "superseded",
+          "supersededBy": "decision/0003-paseto"
+        },
+        {
+          "address": "decision/0003-paseto",
+          "status": "active",
+          "supersededBy": null
+        },
+        {
+          "address": "decision/0004-bad",
+          "status": "superseeded",
+          "supersededBy": null
+        }
+      ]
+    },
+    {
+      "space": "payments",
+      "capabilities": [
+        "charges"
+      ],
+      "requirements": [
+        {
+          "address": "charges/capture-payment",
+          "status": "active",
+          "name": "Capture payment",
+          "scenarios": [
+            {
+              "address": "charges/capture-payment#card-approved",
+              "name": "Card approved",
+              "steps": [
+                "WHEN the bank approves the card",
+                "THEN the payment is captured"
+              ],
+              "covered": true
+            }
+          ]
+        },
+        {
+          "address": "charges/refund",
+          "status": "active",
+          "name": "Refund",
+          "scenarios": [
+            {
+              "address": "charges/refund#partial-refund",
+              "name": "Partial refund",
+              "steps": [
+                "WHEN the client returns one ticket",
+                "THEN that ticket is refunded"
+              ],
+              "covered": false
+            }
+          ]
+        }
+      ],
+      "changes": [],
+      "decisions": []
+    }
+  ],
+  "marks": []
+}

@@ -1,0 +1,14 @@
+{
+  "roots": [
+    {
+      "path": "openspec",
+      "space": "android"
+    }
+  ],
+  "dependencies": {
+    "booking": {
+      "manifest": "speclint/platform.manifest.json",
+      "version": "3.0.0"
+    }
+  }
+}
