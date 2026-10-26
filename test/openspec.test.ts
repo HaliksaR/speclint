@@ -15,6 +15,7 @@ const uncovered = (name: string) => {
   const r = report(name);
   return { ...r, findings: r.findings.filter((f: { rule: string }) => f.rule !== "scenario-untested") };
 };
+const withoutSteps = (r: { findings: { rule: string }[] }) => r.findings.filter((f) => f.rule !== "scenario-steps-missing");
 const at = (level: string, rule: string, file: string, line: number, message: string, related: [string, number][] = []) => ({
   level,
   rule,
@@ -220,7 +221,7 @@ describe("launch errors", () => {
 describe("coverage by test marks", () => {
   it("reads marks from test files in four languages, skips non-test and vendored files and warns on untested scenarios", () => {
     const r = report("coverage");
-    expect(r.findings).toEqual([
+    expect(withoutSteps(r)).toEqual([
       at("error", "test-ref-dangling", "backend/src/test/kotlin/SignInTest.kt", 6, "spec:auth/login: требование переименовано в spec:auth/sign-in (rename-login)", [
         ["openspec/changes/archive/2026-01-10-rename-login/specs/auth/spec.md", 2],
       ]),
@@ -234,17 +235,17 @@ describe("coverage by test marks", () => {
         ["openspec/decisions/0002-tokens.md", 1],
       ]),
     ]);
-    expect(r.summary).toEqual({ errors: 5, warnings: 1, infos: 0, files: 12 });
+    expect(r.summary).toEqual({ errors: 5, warnings: 9, infos: 0, files: 12 });
     expect(r.code).toBe(1);
   });
 
   it("takes test files from tests in speclint.json and gives a mark without space to the nearest root", () => {
     const r = report("coverage-monorepo");
-    expect(r.findings).toEqual([
+    expect(withoutSteps(r)).toEqual([
       at("error", "test-ref-dangling", "e2e/checks/flow.test.ts", 2, "spec:invoices/create: тест вне корней, нужен адрес с пространством"),
       at("error", "test-ref-dangling", "services/auth/checks/SignInCheck.kt", 5, "spec:invoices/create: capability нет"),
     ]);
-    expect(r.summary).toEqual({ errors: 2, warnings: 0, infos: 0, files: 5 });
+    expect(r.summary).toEqual({ errors: 2, warnings: 4, infos: 0, files: 5 });
   });
 });
 
@@ -273,10 +274,12 @@ describe("several repositories linked by published manifests", () => {
       at("error", "dependency-missing", readme, 13, "spec:ghost:a/b: манифест ghost не найден: speclint/ghost.manifest.json"),
       at("error", "dependency-missing", readme, 14, "spec:billing:invoices/create: пространство billing не объявлено в dependencies"),
       at("warning", "scenario-untested-anywhere", "openspec/specs/checkout/spec.md", 15, "сценарий checkout/pay#wallet без теста ни в одном известном репозитории"),
+      { ...at("warning", "scenario-steps-missing", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#absolute-timeout: шаг «WHEN 12 hours pass» не найден среди строк тестов", [["src/checkout.test.ts", 1]]), line: null },
+      { ...at("warning", "scenario-steps-missing", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#absolute-timeout: шаг «THEN the session ends» не найден среди строк тестов", [["src/checkout.test.ts", 1]]), line: null },
       { ...at("warning", "scenario-untested-anywhere", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#remember-me без теста ни в одном известном репозитории"), line: null },
       at("error", "test-ref-dangling", "src/checkout.test.ts", 2, `spec:identity:auth/log-out: требования нет в auth${dep}`),
     ]);
-    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 1, files: 4 });
+    expect(r.summary).toEqual({ errors: 10, warnings: 4, infos: 1, files: 4 });
     expect(r.code).toBe(1);
   });
 
@@ -285,8 +288,14 @@ describe("several repositories linked by published manifests", () => {
     expect(r.findings).toEqual([
       at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 15, "сценарий auth/session-timeout#absolute-timeout без теста"),
       at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 19, "сценарий auth/session-timeout#remember-me без теста"),
-      at("info", "ref-external-unchecked", "src/test/kotlin/SessionTest.kt", 10, "spec:web:checkout/pay#card: пространство web без манифеста, не проверяется"),
+      at("info", "ref-external-unchecked", "src/test/kotlin/SessionTest.kt", 16, "spec:web:checkout/pay#card: пространство web без манифеста, не проверяется"),
     ]);
+    expect(r.code).toBe(0);
+  });
+
+  it("reads a manifest of format 1 that carries no steps and does not check external steps", () => {
+    const r = report("multirepo/web-v1");
+    expect(r.findings).toEqual([]);
     expect(r.code).toBe(0);
   });
 
@@ -301,5 +310,23 @@ describe("several repositories linked by published manifests", () => {
     const r = cli("manifest", fixture("clean"), "--release", "1.0.0");
     expect(r.stderr).toContain("у корня openspec нет пространства");
     expect(r.status).toBe(2);
+  });
+});
+
+describe("scenario steps among string literals of tests", () => {
+  it("finds each step of a marked scenario among literals of all its tests in four languages and hints a near string", () => {
+    const r = report("steps");
+    const spec = "openspec/specs/auth/spec.md";
+    expect(r.findings).toEqual([
+      at("warning", "scenario-steps-missing", spec, 22, "сценарий auth/logout#manual-logout: шаг «THEN the session ends» не найден среди строк тестов", [
+        ["ml/tests/test_logout.py", 1],
+        ["backend/src/test/java/LogoutIT.java", 2],
+      ]),
+      at("warning", "scenario-steps-missing", spec, 30, "сценарий auth/export#csv: шаг «AND it has a header» не найден среди строк тестов; похожая строка: «and it has a  header»", [
+        ["ios/AppTests/ExportTests.swift", 2],
+      ]),
+    ]);
+    expect(r.summary).toEqual({ errors: 0, warnings: 2, infos: 0, files: 6 });
+    expect(r.code).toBe(0);
   });
 });

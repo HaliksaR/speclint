@@ -1,4 +1,4 @@
-import { slug, type Change, type Corpus, type Decision, type Delta, type Reference, type Scenario, type TestMark } from "./model.js";
+import { slug, steps, type Change, type Corpus, type Decision, type Delta, type Reference, type Scenario, type TestMark } from "./model.js";
 import type { Finding } from "./report.js";
 
 type Item = { name: string; slug: string; file: string; line: number; scenarios: Scenario[] };
@@ -51,9 +51,9 @@ const resolve = (view: View, target: string): Resolved => {
 };
 
 export type Dependency = { space: string; label: string; unchecked: boolean; missing: string | null; corpus: Corpus | null; covered: Set<string>; marks: string[] };
-type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; known: Set<string>; dep: Dependency | null };
+type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; hits: Map<string, Reference[]>; known: Set<string>; dep: Dependency | null };
 
-export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = []) => {
+export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = [], literals = new Map<string, Set<string>>()) => {
   const findings: Finding[] = [];
   const add = (level: Finding["level"], rule: string, at: Place, message: string, related: Place[] = []) =>
     findings.push({ level, rule, file: at.file, line: at.line, message, related: related.map((p) => ({ file: p.file, line: p.line })) });
@@ -119,7 +119,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       if (chain.at(-1) === d) add("error", "decision-supersede-cycle", at, `цикл замен: ${[d, ...chain].map((c) => c.id).join(" → ")}`);
     }
 
-    return { corpus, open, archived, main, views, covered: new Set<string>(), known: new Set<string>(), dep: null };
+    return { corpus, open, archived, main, views, covered: new Set<string>(), hits: new Map(), known: new Set<string>(), dep: null };
   });
 
   const manifests = deps.flatMap((dep): Context[] => {
@@ -128,7 +128,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     const main = mainView(corpus);
     const open = corpus.changes.filter((c) => !c.archived);
     const archived = corpus.changes.filter((c) => c.archived);
-    return [{ corpus, open, archived, main, views: new Map(open.map((c) => [c, main])), covered: new Set<string>(), known: new Set(dep.covered), dep }];
+    return [{ corpus, open, archived, main, views: new Map(open.map((c) => [c, main])), covered: new Set<string>(), hits: new Map(), known: new Set(dep.covered), dep }];
   });
   const all = [...contexts, ...manifests];
   for (const dep of deps)
@@ -150,15 +150,24 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     if (own || /^[a-z0-9-]+:/.test(mark.address)) checkReference(own ?? contexts[0], ref, true);
     else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
   }
-  for (const { corpus, covered, known: elsewhere, dep } of all)
+  const fold = (s: string) => s.toLowerCase().replaceAll("ё", "е").replace(/\s+/g, " ");
+  for (const { corpus, covered, hits, known: elsewhere, dep } of all)
     for (const r of corpus.requirements)
       for (const s of r.scenarios) {
         const req = `${r.capability.id}/${r.slug}`;
         const address = `${req}#${s.slug}`;
+        const at = dep ? { file: corpus.root.path, line: null } : { file: r.capability.file, line: s.line };
+        const refs = [...(hits.get(req) ?? []), ...(hits.get(address) ?? [])];
+        const found = [...new Set(refs.flatMap((m) => [...(literals.get(m.file) ?? [])]))];
+        for (const step of refs.length ? steps(s) : []) {
+          if (found.includes(step)) continue;
+          const near = found.find((l) => fold(l) === fold(step));
+          add("warning", "scenario-steps-missing", at, `сценарий ${dep ? `${dep.space}:` : ""}${address}: шаг «${step}» не найден среди строк тестов${near ? `; похожая строка: «${near}»` : ""}`, refs);
+        }
         if ([covered, elsewhere].some((set) => set.has(req) || set.has(address))) continue;
-        if (dep) add("warning", "scenario-untested-anywhere", { file: corpus.root.path, line: null }, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
-        else if (manifests.length) add("warning", "scenario-untested-anywhere", { file: r.capability.file, line: s.line }, `сценарий ${address} без теста ни в одном известном репозитории`);
-        else add("warning", "scenario-untested", { file: r.capability.file, line: s.line }, `сценарий ${address} без теста`);
+        if (dep) add("warning", "scenario-untested-anywhere", at, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
+        else if (manifests.length) add("warning", "scenario-untested-anywhere", at, `сценарий ${address} без теста ни в одном известном репозитории`);
+        else add("warning", "scenario-untested", at, `сценарий ${address} без теста`);
       }
 
   function checkReference(own: Context, ref: Reference, test: boolean) {
@@ -194,7 +203,10 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     }
     const result = resolve(local ? views.get(local)! : ctx.main, target);
     if (result.ok) {
-      if (test) ctx.covered.add(result.key);
+      if (test) {
+        ctx.covered.add(result.key);
+        ctx.hits.set(result.key, [...(ctx.hits.get(result.key) ?? []), ref]);
+      }
       return;
     }
     const elsewhere = open.filter((c) => c !== local).flatMap((c) => {

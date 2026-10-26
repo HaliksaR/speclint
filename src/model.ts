@@ -26,6 +26,9 @@ export type Corpus = {
   files: number;
 };
 
+export const steps = (scenario: Scenario) =>
+  scenario.steps.map((s) => s.replace(/^[-*+]\s+/, "").replaceAll("**", "").trim()).filter((s) => /^(GIVEN|WHEN|THEN|AND|BUT)\b/.test(s));
+
 export const slug = (name: string) =>
   name
     .normalize("NFC")
