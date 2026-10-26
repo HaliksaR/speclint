@@ -2,12 +2,13 @@
 
 Детерминированный линтер согласованности спецификаций для SDD-репозиториев. Первый поддерживаемый формат — OpenSpec.
 
-Статус: M4 — один корень `openspec/` или несколько корней из `speclint.json` (монорепо), правила ссылок и дельт: `ref-dangling`, `ref-archived`, `address-collision`, `delta-target-missing`, `delta-target-exists`, `delta-overlap`, `ref-external-unchecked`; реестр решений: `decision-inactive-ref`, `decision-no-rationale`, `decision-status-invalid`, `decision-supersede-missing`, `decision-supersede-cycle`; покрытие тестами: `test-ref-dangling`, `scenario-untested`. План — [PLAN.md](PLAN.md), требования — [docs/requirements.md](docs/requirements.md), архитектура и контракты — [docs/architecture.md](docs/architecture.md), формат OpenSpec — [docs/openspec-format.md](docs/openspec-format.md).
+Статус: M5 — один корень `openspec/` или несколько корней из `speclint.json` (монорепо), правила ссылок и дельт: `ref-dangling`, `ref-archived`, `address-collision`, `delta-target-missing`, `delta-target-exists`, `delta-overlap`, `ref-external-unchecked`; реестр решений: `decision-inactive-ref`, `decision-no-rationale`, `decision-status-invalid`, `decision-supersede-missing`, `decision-supersede-cycle`; покрытие тестами: `test-ref-dangling`, `scenario-untested`; мультирепо через опубликованный манифест: `dependency-missing`, `scenario-untested-anywhere`. План — [PLAN.md](PLAN.md), требования — [docs/requirements.md](docs/requirements.md), архитектура и контракты — [docs/architecture.md](docs/architecture.md), формат OpenSpec — [docs/openspec-format.md](docs/openspec-format.md).
 
 ## Запуск
 
 ```bash
 npx @haliksar/speclint [путь] [--format text|json]
+npx @haliksar/speclint manifest [путь] --release <версия>
 npx @haliksar/speclint --version
 ```
 
@@ -28,7 +29,21 @@ npx @haliksar/speclint --version
 
 Покрытие: тест помечается токеном `spec:<адрес>` где угодно в тестовом файле — в имени теста, аннотации, строке или комментарии, на любом языке: `@Spec("spec:auth/sign-in")`, `it("spec:auth/session-timeout#idle-timeout …")`, `# spec:auth/logout`. Метка требования покрывает все его сценарии. Тестовые файлы Kotlin/Java, TypeScript/JS, Swift и Python находятся по конвенциям; свои шаблоны — `"tests": ["**/checks/**"]` в `speclint.json` (заменяют конвенции). В монорепо метка без пространства относится к корню, ближайшему к тесту по папкам. `node_modules`, `build`, `Pods`, `.venv` и подобные папки не читаются. Подробно — [docs/architecture.md](docs/architecture.md#покрытие-m4).
 
-Коды возврата: `0` — ошибок нет, `1` — есть ошибки, `2` — сломан запуск (неизвестный флаг или формат, нет корня, нечитаемый `speclint.json`).
+Мультирепо: репозиторий-поставщик на релизе печатает манифест `speclint manifest . --release 1.4.0 > identity.manifest.json` (нужен `speclint.json` с пространством у каждого корня) и публикует его как удобно. Потребитель коммитит копию к себе и фиксирует версию:
+
+```json
+{
+  "roots": [{ "path": "openspec", "space": "web" }],
+  "dependencies": {
+    "identity": { "manifest": "speclint/identity.manifest.json", "version": "1.4.0" },
+    "legacy": { "unchecked": true }
+  }
+}
+```
+
+Ссылки и метки `spec:identity:…` сверяются с копией без сети теми же правилами, что локальные; пространство без записи в `dependencies` — ошибка `dependency-missing`, `unchecked` — info. Сценарий, не покрытый ни здесь, ни в тестах репозиториев из известных манифестов, — `scenario-untested-anywhere`. Подробно — [docs/architecture.md](docs/architecture.md#манифест-m5).
+
+Коды возврата: `0` — ошибок нет, `1` — есть ошибки, `2` — сломан запуск (неизвестный флаг или формат, нет корня, нечитаемый `speclint.json` или манифест, версия манифеста не совпадает с зафиксированной).
 
 ## Разработка
 
@@ -39,15 +54,16 @@ npm ci
 npm test
 ```
 
-Сценарные тесты — `test/openspec.test.ts` на фикстурах-репозиториях `test/fixtures/`: `clean` (чистый корпус: вложенная capability, ссылки из изменения на свои дельты, архив, ложные токены вроде `openspec:archive` и `…/spec:…` в URL), `refs` (все случаи ссылок), `deltas` (конфликты дельт и коллизии адресов), `monorepo` (два корня из `speclint.json`: ссылки между ними, одинаковые capability и изменения в разных корнях не конфликтуют, `openspec/` вне конфигурации не читается), `decisions` (реестр решений в двух корнях: ссылки между корнями, цепочки замен, ошибки реестра), `coverage` (тесты на четырёх языках, метки в рабочем коде, `node_modules` и `build` не читаются), `coverage-monorepo` (`tests` из `speclint.json`, корень теста по папкам, тест вне корней), `config-*` (ошибки конфигурации, код `2`). Тесты M1–M3 не проверяют `scenario-untested` (хелпер `uncovered`): покрытие не их предмет. Vitest берёт только `test/*.test.ts` (`vitest.config.ts`) — тестовые файлы фикстур не запускаются; `.gitignore` не скрывает `node_modules` внутри фикстур.
+Сценарные тесты — `test/openspec.test.ts` на фикстурах-репозиториях `test/fixtures/`: `clean` (чистый корпус: вложенная capability, ссылки из изменения на свои дельты, архив, ложные токены вроде `openspec:archive` и `…/spec:…` в URL), `refs` (все случаи ссылок), `deltas` (конфликты дельт и коллизии адресов), `monorepo` (два корня из `speclint.json`: ссылки между ними, одинаковые capability и изменения в разных корнях не конфликтуют, `openspec/` вне конфигурации не читается), `decisions` (реестр решений в двух корнях: ссылки между корнями, цепочки замен, ошибки реестра), `coverage` (тесты на четырёх языках, метки в рабочем коде, `node_modules` и `build` не читаются), `coverage-monorepo` (`tests` из `speclint.json`, корень теста по папкам, тест вне корней), `multirepo` (`identity` — поставщик, `web` — потребитель с копией манифеста `identity` 1.4.0, `unchecked` и отсутствующим манифестом, `web-stale` — зафиксирована другая версия; эталон `web/speclint/identity.manifest.json` — заодно ожидаемый вывод `speclint manifest identity --release 1.4.0`), `config-*` (ошибки конфигурации, код `2`). Тесты M1–M3 не проверяют `scenario-untested` (хелпер `uncovered`): покрытие не их предмет. Vitest берёт только `test/*.test.ts` (`vitest.config.ts`) — тестовые файлы фикстур не запускаются; `.gitignore` не скрывает `node_modules` внутри фикстур.
 
 `npm test` сначала собирает `dist/` через `tsc`: сценарные тесты запускают собранный `dist/cli.js` так же, как его запустит `npx`.
 
-- `src/cli.ts` — разбор аргументов и `speclint.json`, коды возврата `2` для ошибок запуска; версия читается из `package.json` рядом с `dist/`.
+- `src/cli.ts` — разбор аргументов, команды `manifest` и `speclint.json`, загрузка манифестов зависимостей, коды возврата `2` для ошибок запуска; версия читается из `package.json` рядом с `dist/`.
 - `src/model.ts` — модель ядра и слаг имени.
 - `src/openspec.ts` — адаптер OpenSpec, один корень за вызов: capability из `specs/**/spec.md`, требования из `## Requirements` вне блоков кода, сценарии — заголовки `####` с непустым телом, дельты четырёх разделов, архив `changes/archive/YYYY-MM-DD-<id>` (дата отбрасывается), токены `spec:` во всех `*.md` корня кроме архива, решения из `decisions/*.md` (front-matter `key: value`, раздел обоснования).
 - `src/tests.ts` — поиск тестовых файлов (конвенции или `tests`, пропуск `node_modules` и т. п.), корень-владелец теста, метки `spec:` тем же токеном, что в Markdown.
-- `src/rules.ts` — правила M1, реестра решений и покрытия над моделью, по корню отдельно, ссылки с пространством — в корень с этим пространством; как они работают — [docs/architecture.md](docs/architecture.md#как-работают-правила-m1).
+- `src/manifest.ts` — манифест из корпусов и покрытия (упорядоченный JSON) и обратно: корпус зависимости из манифеста, история `removed`/`renamed` — дельтами архивных изменений, чтобы работали те же правила.
+- `src/rules.ts` — правила M1, реестра решений и покрытия над моделью, по корню отдельно, ссылки с пространством — в корень с этим пространством или в корпус зависимости из манифеста; как они работают — [docs/architecture.md](docs/architecture.md#как-работают-правила-m1).
 - `src/report.ts` — находка, код возврата (`1` только при `error`), отчёты `text` и `json` по контракту из [docs/architecture.md](docs/architecture.md#json-отчёт).
 
 Если `npm install <пакет>` падает с `Cannot read properties of null (reading 'edgesOut')` — это ошибка npm 10 на необязательных peer-зависимостях Vitest; ставить с `--legacy-peer-deps`. `npm ci` по lock-файлу работает без флага.

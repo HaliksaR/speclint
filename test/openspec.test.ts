@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const fixture = (name: string) => new URL(`./fixtures/${name}`, import.meta.url).pathname;
@@ -96,9 +97,9 @@ describe("references", () => {
     );
   });
 
-  it("marks external addresses as unchecked", () => {
+  it("reports a space that is not declared in dependencies", () => {
     expect(findings()).toContainEqual(
-      at("info", "ref-external-unchecked", readme, 11, "spec:billing:invoices/create: внешний адрес не проверяется до M5"),
+      at("error", "dependency-missing", readme, 11, "spec:billing:invoices/create: пространство billing не объявлено в dependencies"),
     );
   });
 
@@ -109,7 +110,7 @@ describe("references", () => {
   it("reports nothing else and exits 1", () => {
     const r = uncovered("refs");
     expect(r.findings).toHaveLength(11);
-    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 1, files: 9 });
+    expect(r.summary).toEqual({ errors: 11, warnings: 2, infos: 0, files: 9 });
     expect(r.status).toBe("findings");
     expect(r.code).toBe(1);
   });
@@ -150,9 +151,9 @@ describe("a monorepo with several roots in speclint.json", () => {
       at("error", "ref-dangling", `${billing}/README.md`, 7, "spec:auth:session/two-factor: требования нет в session; есть в открытом изменении add-2fa", [
         [`${auth}/changes/add-2fa/specs/session/spec.md`, 3],
       ]),
-      at("info", "ref-external-unchecked", `${billing}/README.md`, 9, "spec:identity:users/profile: внешний адрес не проверяется до M5"),
+      at("error", "dependency-missing", `${billing}/README.md`, 9, "spec:identity:users/profile: пространство identity не объявлено в dependencies"),
     ]);
-    expect(r.summary).toEqual({ errors: 4, warnings: 5, infos: 1, files: 10 });
+    expect(r.summary).toEqual({ errors: 5, warnings: 5, infos: 0, files: 10 });
     expect(r.code).toBe(1);
   });
 });
@@ -227,13 +228,13 @@ describe("coverage by test marks", () => {
         ["openspec/changes/archive/2026-03-01-drop-legacy/specs/auth/spec.md", 2],
       ]),
       at("error", "test-ref-dangling", "ml/tests/test_session.py", 1, "spec:auth/session-timout: требования нет в auth"),
-      at("info", "ref-external-unchecked", "ml/tests/test_session.py", 6, "spec:billing:invoices/create: внешний адрес не проверяется до M5"),
+      at("error", "dependency-missing", "ml/tests/test_session.py", 6, "spec:billing:invoices/create: пространство billing не объявлено в dependencies"),
       at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 26, "сценарий auth/session-timeout#absolute-timeout без теста"),
       at("error", "test-ref-dangling", "web/src/session.test.ts", 5, "spec:decision/0001-cookies: решение заменено: 0001-cookies → 0002-tokens", [
         ["openspec/decisions/0002-tokens.md", 1],
       ]),
     ]);
-    expect(r.summary).toEqual({ errors: 4, warnings: 1, infos: 1, files: 12 });
+    expect(r.summary).toEqual({ errors: 5, warnings: 1, infos: 0, files: 12 });
     expect(r.code).toBe(1);
   });
 
@@ -244,5 +245,61 @@ describe("coverage by test marks", () => {
       at("error", "test-ref-dangling", "services/auth/checks/SignInCheck.kt", 5, "spec:invoices/create: capability нет"),
     ]);
     expect(r.summary).toEqual({ errors: 2, warnings: 0, infos: 0, files: 5 });
+  });
+});
+
+describe("several repositories linked by published manifests", () => {
+  const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
+  const readme = "openspec/README.md";
+  const dep = "; зависимость identity 1.4.0";
+
+  it("builds a deterministic manifest of the repository with addresses, statuses, decisions and coverage", () => {
+    const r = cli("manifest", fixture("multirepo/identity"), "--release", "1.4.0");
+    expect(r.stdout).toBe(readFileSync(fixture("multirepo/web/speclint/identity.manifest.json"), "utf8"));
+    expect(r.status).toBe(0);
+  });
+
+  it("checks references and test marks against the manifest of a pinned dependency", () => {
+    const r = report("multirepo/web");
+    expect(r.findings).toEqual([
+      at("error", "ref-dangling", readme, 4, `spec:identity:auth/sesion-timeout: требования нет в auth${dep}`),
+      at("error", "ref-dangling", readme, 5, `spec:identity:auth/login: требование переименовано в spec:identity:auth/log-in (rename-login)${dep}`),
+      at("error", "ref-archived", readme, 6, `spec:identity:auth/legacy-login: требование удалено архивным изменением drop-legacy${dep}`),
+      at("error", "decision-inactive-ref", readme, 7, `spec:identity:decision/0007-jwt: решение заменено: 0007-jwt → 0012-paseto${dep}`),
+      at("error", "decision-inactive-ref", readme, 8, `spec:identity:decision/0003-cookies: решение отменено${dep}`),
+      at("error", "ref-archived", readme, 10, `spec:identity:change/drop-legacy: изменение в архиве${dep}`),
+      at("error", "ref-dangling", readme, 11, `spec:identity:auth/two-factor: требования нет в auth${dep}`),
+      at("info", "ref-external-unchecked", readme, 12, "spec:legacy:anything/x: пространство legacy без манифеста, не проверяется"),
+      at("error", "dependency-missing", readme, 13, "spec:ghost:a/b: манифест ghost не найден: speclint/ghost.manifest.json"),
+      at("error", "dependency-missing", readme, 14, "spec:billing:invoices/create: пространство billing не объявлено в dependencies"),
+      at("warning", "scenario-untested-anywhere", "openspec/specs/checkout/spec.md", 15, "сценарий checkout/pay#wallet без теста ни в одном известном репозитории"),
+      { ...at("warning", "scenario-untested-anywhere", "speclint/identity.manifest.json", 0, "сценарий identity:auth/session-timeout#remember-me без теста ни в одном известном репозитории"), line: null },
+      at("error", "test-ref-dangling", "src/checkout.test.ts", 2, `spec:identity:auth/log-out: требования нет в auth${dep}`),
+    ]);
+    expect(r.summary).toEqual({ errors: 10, warnings: 2, infos: 1, files: 4 });
+    expect(r.code).toBe(1);
+  });
+
+  it("keeps unchecked spaces as info and scenario-untested without known manifests", () => {
+    const r = report("multirepo/identity");
+    expect(r.findings).toEqual([
+      at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 15, "сценарий auth/session-timeout#absolute-timeout без теста"),
+      at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 19, "сценарий auth/session-timeout#remember-me без теста"),
+      at("info", "ref-external-unchecked", "src/test/kotlin/SessionTest.kt", 10, "spec:web:checkout/pay#card: пространство web без манифеста, не проверяется"),
+    ]);
+    expect(r.code).toBe(0);
+  });
+
+  it("exits 2 when the manifest version differs from the pinned one", () => {
+    const r = run("multirepo/web-stale");
+    expect(r.stderr).toContain("манифест identity: версия 1.4.0, зафиксирована 1.3.0");
+    expect(r.status).toBe(2);
+  });
+
+  it("exits 2 when manifest has no release version or a root has no space", () => {
+    expect(cli("manifest", fixture("multirepo/identity")).stderr).toContain("нужен --release");
+    const r = cli("manifest", fixture("clean"), "--release", "1.0.0");
+    expect(r.stderr).toContain("у корня openspec нет пространства");
+    expect(r.status).toBe(2);
   });
 });

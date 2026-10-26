@@ -50,9 +50,10 @@ const resolve = (view: View, target: string): Resolved => {
   return s ? { ok: true, at: { file: item.file, line: s.line }, key: `${cap}/${item.slug}#${s.slug}` } : { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null };
 };
 
-type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string> };
+export type Dependency = { space: string; label: string; unchecked: boolean; missing: string | null; corpus: Corpus | null; covered: Set<string>; marks: string[] };
+type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; known: Set<string>; dep: Dependency | null };
 
-export const check = (corpora: Corpus[], marks: TestMark[]): Finding[] => {
+export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = []) => {
   const findings: Finding[] = [];
   const add = (level: Finding["level"], rule: string, at: Place, message: string, related: Place[] = []) =>
     findings.push({ level, rule, file: at.file, line: at.line, message, related: related.map((p) => ({ file: p.file, line: p.line })) });
@@ -118,8 +119,23 @@ export const check = (corpora: Corpus[], marks: TestMark[]): Finding[] => {
       if (chain.at(-1) === d) add("error", "decision-supersede-cycle", at, `цикл замен: ${[d, ...chain].map((c) => c.id).join(" → ")}`);
     }
 
-    return { corpus, open, archived, main, views, covered: new Set<string>() };
+    return { corpus, open, archived, main, views, covered: new Set<string>(), known: new Set<string>(), dep: null };
   });
+
+  const manifests = deps.flatMap((dep): Context[] => {
+    if (!dep.corpus) return [];
+    const corpus = dep.corpus;
+    const main = mainView(corpus);
+    const open = corpus.changes.filter((c) => !c.archived);
+    const archived = corpus.changes.filter((c) => c.archived);
+    return [{ corpus, open, archived, main, views: new Map(open.map((c) => [c, main])), covered: new Set<string>(), known: new Set(dep.covered), dep }];
+  });
+  const all = [...contexts, ...manifests];
+  for (const dep of deps)
+    for (const mark of dep.marks) {
+      const [, space, target] = mark.match(/^([a-z0-9-]+):(.*)$/)!;
+      all.find((c) => c.corpus.root.space === space)?.known.add(target);
+    }
 
   function replacements(corpus: Corpus, from: Decision) {
     const chain: Decision[] = [];
@@ -134,20 +150,29 @@ export const check = (corpora: Corpus[], marks: TestMark[]): Finding[] => {
     if (own || /^[a-z0-9-]+:/.test(mark.address)) checkReference(own ?? contexts[0], ref, true);
     else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
   }
-  for (const { corpus, covered } of contexts)
+  for (const { corpus, covered, known: elsewhere, dep } of all)
     for (const r of corpus.requirements)
       for (const s of r.scenarios) {
         const req = `${r.capability.id}/${r.slug}`;
-        if (!covered.has(req) && !covered.has(`${req}#${s.slug}`))
-          add("warning", "scenario-untested", { file: r.capability.file, line: s.line }, `сценарий ${req}#${s.slug} без теста`);
+        const address = `${req}#${s.slug}`;
+        if ([covered, elsewhere].some((set) => set.has(req) || set.has(address))) continue;
+        if (dep) add("warning", "scenario-untested-anywhere", { file: corpus.root.path, line: null }, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
+        else if (manifests.length) add("warning", "scenario-untested-anywhere", { file: r.capability.file, line: s.line }, `сценарий ${address} без теста ни в одном известном репозитории`);
+        else add("warning", "scenario-untested", { file: r.capability.file, line: s.line }, `сценарий ${address} без теста`);
       }
 
   function checkReference(own: Context, ref: Reference, test: boolean) {
-    const fail = (rule: string, at: Place, message: string, related: Place[] = []) => add("error", test ? "test-ref-dangling" : rule, at, message, related);
     const token = `spec:${ref.address}`;
     const external = ref.address.match(/^([a-z0-9-]+):(.*)$/);
-    const ctx = external ? contexts.find((c) => c.corpus.root.space === external[1]) : own;
-    if (!ctx) return add("info", "ref-external-unchecked", ref, `${token}: внешний адрес не проверяется до M5`);
+    const ctx = external ? all.find((c) => c.corpus.root.space === external[1]) : own;
+    if (!ctx) {
+      const dep = deps.find((d) => d.space === external![1]);
+      if (dep?.unchecked) return add("info", "ref-external-unchecked", ref, `${token}: пространство ${dep.space} без манифеста, не проверяется`);
+      return add("error", "dependency-missing", ref, `${token}: ${dep?.missing ?? `пространство ${external![1]} не объявлено в dependencies`}`);
+    }
+    const suffix = ctx.dep ? `; зависимость ${ctx.dep.label}` : "";
+    const fail = (rule: string, at: Place, message: string, related: Place[] = []) =>
+      add("error", test ? "test-ref-dangling" : rule, at, message + suffix, ctx.dep ? [] : related);
     const { open, archived, views } = ctx;
     const local = ctx === own ? ref.change : null;
     const target = external ? external[2] : ref.address;
@@ -194,9 +219,10 @@ export const check = (corpora: Corpus[], marks: TestMark[]): Finding[] => {
   }
 
   const key = (f: Finding) => [f.file ?? "", String(f.line ?? 0).padStart(9, "0"), f.rule];
-  return findings.sort((a, b) => {
+  findings.sort((a, b) => {
     const [x, y] = [key(a), key(b)];
     for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
     return 0;
   });
+  return { findings, covered: new Map(contexts.map((c) => [c.corpus, c.covered])) };
 };
