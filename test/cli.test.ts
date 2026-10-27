@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exitCode } from "../src/report.js";
 
@@ -47,5 +49,18 @@ describe("exit code", () => {
 
   it("is 1 when there is an error", () => {
     expect(exitCode([finding("warning"), finding("error")])).toBe(1);
+  });
+});
+
+describe("output to a pipe", () => {
+  it("writes a JSON report larger than the pipe buffer in full", () => {
+    const dir = mkdtempSync(join(tmpdir(), "speclint-"));
+    mkdirSync(join(dir, "openspec/specs/app"), { recursive: true });
+    writeFileSync(join(dir, "openspec/specs/app/spec.md"), "# app\n\n## Requirements\n");
+    writeFileSync(join(dir, "openspec/notes.md"), Array.from({ length: 2000 }, (_, i) => `spec:app/missing-${i}\n`).join(""));
+    const r = cli(dir, "--format", "json");
+    expect(r.stdout.length).toBeGreaterThan(65536);
+    expect(JSON.parse(r.stdout).summary.errors).toBe(2000);
+    expect(r.status).toBe(1);
   });
 });
