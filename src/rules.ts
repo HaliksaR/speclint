@@ -7,6 +7,16 @@ type View = Map<string, Capability>;
 type Place = { file: string; line: number | null };
 type Resolved = { ok: true; at: Place; key: string } | { ok: false; message: string; missing: { cap: string; slug: string } | null };
 
+const distance = (a: string, b: string): number => {
+  let row = [...Array(b.length + 1).keys()];
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+
 const ORDER: Delta["op"][] = ["renamed", "removed", "modified", "added"];
 
 const mainView = (corpus: Corpus): View => {
@@ -226,7 +236,11 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       const r = resolve(c.main, target);
       return !r.ok && r.message === "capability нет";
     };
-    if (test && (elsewhere.length || (!external && all.every(unknown)))) return;
+    if (test && elsewhere.length) return;
+    if (test && !external && all.every(unknown)) {
+      const near = all.flatMap((c) => [...c.main.keys()]).find((cap) => distance(cap, target.split("#")[0].split("/").slice(0, cap.split("/").length).join("/")) <= 2);
+      return near ? fail("ref-dangling", ref, `${token}: capability нет; похоже на spec:${near}`) : undefined;
+    }
     if (result.missing) {
       const { cap, slug: wanted } = result.missing;
       const renames = [...archived, ...(local ? [local] : [])].flatMap((c) => c.deltas).filter((d) => d.op === "renamed" && d.capability === cap);
