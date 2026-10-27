@@ -95,8 +95,8 @@ const { marks, files: testFiles, literals } = loadMarks(path, roots, tests);
 const { findings, covered } = check(corpora, marks, deps, literals);
 if (manifest) {
   process.stdout.write(`${toManifest(corpora, covered, marks, release!)}\n`);
-  process.exit(0);
+} else {
+  const files = corpora.reduce((n, c) => n + c.files, testFiles + new Set(deps.filter((d) => d.corpus).map((d) => d.corpus!.root.path)).size);
+  process.stdout.write(`${format === "json" ? jsonReport(version, findings, files) : textReport(findings, files)}\n`);
+  process.exitCode = exitCode(findings);
 }
-const files = corpora.reduce((n, c) => n + c.files, testFiles + new Set(deps.filter((d) => d.corpus).map((d) => d.corpus!.root.path)).size);
-process.stdout.write(`${format === "json" ? jsonReport(version, findings, files) : textReport(findings, files)}\n`);
-process.exit(exitCode(findings));
