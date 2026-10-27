@@ -2,13 +2,25 @@
   "name": "@haliksar/speclint",
   "version": "0.1.0",
   "description": "Deterministic consistency linter for spec-driven repositories",
+  "keywords": [
+    "openspec",
+    "spec-driven-development",
+    "sdd",
+    "lint",
+    "requirements",
+    "traceability",
+    "adr",
+    "monorepo"
+  ],
   "license": "MIT",
+  "author": "haliksar",
   "type": "module",
   "bin": {
     "speclint": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.ru.md"
   ],
   "engines": {
     "node": ">=20"

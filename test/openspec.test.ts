@@ -341,6 +341,14 @@ describe("noise on repositories without marks", () => {
   });
 });
 
+describe("a typo in the capability of a test mark", () => {
+  it("reports a mark whose unknown capability is one or two letters off a known one and still ignores unrelated spec: strings", () => {
+    const r = report("typo");
+    expect(r.findings).toEqual([at("error", "test-ref-dangling", "src/search.test.ts", 4, "spec:serch/find-items#empty: capability нет; похоже на spec:search")]);
+    expect(r.code).toBe(1);
+  });
+});
+
 describe("the ticketly organization of five repositories", () => {
   const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
   const lines = (name: string) => run(`ticketly/${name}`).stdout.trim().split("\n");
