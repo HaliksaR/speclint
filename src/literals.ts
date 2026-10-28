@@ -3,6 +3,7 @@ const UNESCAPED = new Set(['"', "'", "`", "\\"]);
 export const literals = (text: string, file: string) => {
   const python = file.endsWith(".py");
   const js = /\.[cm]?[jt]sx?$/.test(file);
+  const go = file.endsWith(".go");
   const open = python ? /([rRbBuUfF]*)("""|'''|"|')/y : js ? /()("|'|`)/y : /(#*)("""|"|'|`)/y;
   const found: string[] = [];
   const end = (s: string, from: number) => {
@@ -28,9 +29,9 @@ export const literals = (text: string, file: string) => {
     } else if (!q) {
       if (text[i] > " ") last = i;
       i++;
-    } else if (q[2] === "`" && !js) i = Math.min(end("`", i + 1), end("\n", i));
+    } else if (q[2] === "`" && !js && !go) i = Math.min(end("`", i + 1), end("\n", i));
     else {
-      const raw = python ? /r/i.test(q[1]) : q[1].length > 0;
+      const raw = python ? /r/i.test(q[1]) : q[1].length > 0 || (go && q[2] === "`");
       const close = q[2] + (python ? "" : q[1]);
       const single = q[2].length === 1 && q[2] !== "`";
       let s = "";

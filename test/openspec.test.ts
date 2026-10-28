@@ -48,7 +48,7 @@ describe("references", () => {
   it("reports addresses that do not resolve", () => {
     expect(findings()).toEqual(
       expect.arrayContaining([
-        at("error", "ref-dangling", readme, 3, "spec:auth/session-timout: требования нет в auth"),
+        at("error", "ref-dangling", readme, 3, "spec:auth/session-timout: требования нет в auth; похоже на spec:auth/session-timeout"),
         at("error", "ref-dangling", readme, 4, "spec:payments: capability нет"),
         at("error", "ref-dangling", readme, 5, "spec:auth/session-timeout#missing: сценария нет в auth/session-timeout"),
         at("error", "ref-dangling", readme, 6, "spec:change/ghost: изменения нет"),
@@ -105,7 +105,7 @@ describe("references", () => {
   });
 
   it("prints findings as file:line lines in text format", () => {
-    expect(run("refs").stdout).toContain(`${readme}:3: error ref-dangling: spec:auth/session-timout: требования нет в auth\n`);
+    expect(run("refs").stdout).toContain(`${readme}:3: error ref-dangling: spec:auth/session-timout: требования нет в auth; похоже на spec:auth/session-timeout\n`);
   });
 
   it("reports nothing else and exits 1", () => {
@@ -228,7 +228,7 @@ describe("coverage by test marks", () => {
       at("error", "test-ref-dangling", "ios/AppTests/SessionTests.swift", 4, "spec:auth/legacy-login: требование удалено архивным изменением drop-legacy", [
         ["openspec/changes/archive/2026-03-01-drop-legacy/specs/auth/spec.md", 2],
       ]),
-      at("error", "test-ref-dangling", "ml/tests/test_session.py", 1, "spec:auth/session-timout: требования нет в auth"),
+      at("error", "test-ref-dangling", "ml/tests/test_session.py", 1, "spec:auth/session-timout: требования нет в auth; похоже на spec:auth/session-timeout"),
       at("error", "dependency-missing", "ml/tests/test_session.py", 6, "spec:billing:invoices/create: пространство billing не объявлено в dependencies"),
       at("warning", "scenario-untested", "openspec/specs/auth/spec.md", 26, "сценарий auth/session-timeout#absolute-timeout без теста"),
       at("error", "test-ref-dangling", "web/src/session.test.ts", 5, "spec:decision/0001-cookies: решение заменено: 0001-cookies → 0002-tokens", [
@@ -263,7 +263,7 @@ describe("several repositories linked by published manifests", () => {
   it("checks references and test marks against the manifest of a pinned dependency", () => {
     const r = report("multirepo/web");
     expect(r.findings).toEqual([
-      at("error", "ref-dangling", readme, 4, `spec:identity:auth/sesion-timeout: требования нет в auth${dep}`),
+      at("error", "ref-dangling", readme, 4, `spec:identity:auth/sesion-timeout: требования нет в auth; похоже на spec:identity:auth/session-timeout${dep}`),
       at("error", "ref-dangling", readme, 5, `spec:identity:auth/login: требование переименовано в spec:identity:auth/log-in (rename-login)${dep}`),
       at("error", "ref-archived", readme, 6, `spec:identity:auth/legacy-login: требование удалено архивным изменением drop-legacy${dep}`),
       at("error", "decision-inactive-ref", readme, 7, `spec:identity:decision/0007-jwt: решение заменено: 0007-jwt → 0012-paseto${dep}`),
@@ -346,6 +346,33 @@ describe("a typo in the capability of a test mark", () => {
     const r = report("typo");
     expect(r.findings).toEqual([at("error", "test-ref-dangling", "src/search.test.ts", 4, "spec:serch/find-items#empty: capability нет; похоже на spec:search")]);
     expect(r.code).toBe(1);
+  });
+});
+
+describe("a Go repository", () => {
+  const spec = "openspec/specs/reviews/spec.md";
+  const file = "app/reviews_test.go";
+
+  it("finds marks in _test.go by convention, reads Go raw strings, takes a dash in a mark for a hyphen and hints a near scenario", () => {
+    const r = report("go");
+    expect(r.findings).toEqual([
+      at("error", "test-ref-dangling", file, 17, "spec:reviews/send-review#pendng: сценария нет в reviews/send-review; похоже на spec:reviews/send-review#pending"),
+      at("warning", "scenario-steps-missing", spec, 12, "сценарий reviews/send-review#reason-1-200-chars: шаг «THEN the server answers 400» не найден среди строк тестов", [[file, 12]]),
+      at("warning", "scenario-untested", spec, 16, "сценарий reviews/send-review#untested без теста"),
+    ]);
+    expect(r.code).toBe(1);
+  });
+
+  it("switches a rule off and changes the level of another from speclint.json", () => {
+    const r = report("go-rules");
+    expect(r.findings.map((f: { level: string; rule: string }) => `${f.level} ${f.rule}`)).toEqual(["error test-ref-dangling", "error scenario-untested"]);
+    expect(r.code).toBe(1);
+  });
+
+  it("exits 2 on an unknown rule in speclint.json", () => {
+    const r = run("config-bad-rules");
+    expect(r.stderr).toContain("rules: неизвестное правило scenario-steps-mising");
+    expect(r.status).toBe(2);
   });
 });
 

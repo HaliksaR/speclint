@@ -53,7 +53,15 @@ A reference in Markdown or a mark in a test is the token `spec:<address>`:
 }
 ```
 
-`<path>/speclint.json` lists the roots; only they are checked. An address without a namespace resolves in its own root. `tests` replaces the test file conventions (Kotlin/Java, TypeScript/JS, Swift, Python).
+`<path>/speclint.json` lists the roots; only they are checked. An address without a namespace resolves in its own root. `tests` replaces the test file conventions (Kotlin/Java, TypeScript/JS, Swift, Python, Go `*_test.go`).
+
+## Rule levels
+
+```json
+{ "rules": { "scenario-steps-missing": "off", "scenario-untested": "error" } }
+```
+
+`off` switches a rule off, `error`/`warning`/`info` change its level; the exit code follows the new levels. An unknown rule or level exits `2`.
 
 ## Decisions
 

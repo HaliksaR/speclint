@@ -7,6 +7,26 @@ export type Finding = {
   related: { file: string; line: number | null }[];
 };
 
+export const RULES = [
+  "ref-dangling",
+  "ref-archived",
+  "address-collision",
+  "delta-target-missing",
+  "delta-target-exists",
+  "delta-overlap",
+  "ref-external-unchecked",
+  "decision-inactive-ref",
+  "decision-no-rationale",
+  "decision-status-invalid",
+  "decision-supersede-missing",
+  "decision-supersede-cycle",
+  "test-ref-dangling",
+  "scenario-untested",
+  "dependency-missing",
+  "scenario-untested-anywhere",
+  "scenario-steps-missing",
+];
+
 const hasErrors = (findings: Finding[]) => findings.some((f) => f.level === "error");
 
 export const exitCode = (findings: Finding[]): number => (hasErrors(findings) ? 1 : 0);

@@ -11,6 +11,7 @@ const CONVENTIONS = [
   /\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)__tests__\/.*\.[cm]?[jt]sx?$/,
   /(^|\/)[^/]*Tests\/.*\.swift$/,
   /(^|\/)(test_[^/]*|[^/]*_test)\.py$|(^|\/)tests?\/.*\.py$/,
+  /_test\.go$/,
 ];
 
 const glob = (g: string) =>
@@ -34,7 +35,7 @@ export const loadMarks = (base: string, roots: Root[], tests: string[] | null) =
   const strings = new Map<string, Set<string>>();
   const marks: TestMark[] = testFiles.flatMap((file) => {
     const text = readFileSync(join(base, file), "utf8");
-    const found = text.split(/\r?\n/).flatMap((line, i) => [...line.matchAll(TOKEN)].map((m) => ({ address: m[1], root: owner(file), file, line: i + 1 })));
+    const found = text.split(/\r?\n/).flatMap((line, i) => [...line.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), root: owner(file), file, line: i + 1 })));
     if (found.length) strings.set(file, new Set(literals(text, file).map((l) => l.trim())));
     return found;
   });
