@@ -5,7 +5,7 @@ type Item = { name: string; slug: string; file: string; line: number; scenarios:
 type Capability = { file: string; reqs: Map<string, Item> };
 type View = Map<string, Capability>;
 type Place = { file: string; line: number | null };
-type Resolved = { ok: true; at: Place; key: string } | { ok: false; message: string; missing: { cap: string; slug: string } | null };
+type Resolved = { ok: true; at: Place; key: string } | { ok: false; message: string; missing: { cap: string; slug: string } | null; near?: string };
 
 const distance = (a: string, b: string): number => {
   let row = [...Array(b.length + 1).keys()];
@@ -54,10 +54,16 @@ const resolve = (view: View, target: string): Resolved => {
   const rest = segs.slice(n);
   if (rest.length === 0 && scenario === undefined) return { ok: true, at: { file: capability.file, line: null }, key: cap };
   const item = rest.length === 1 ? [...capability.reqs.values()].find((r) => r.slug === rest[0]) : undefined;
-  if (!item) return { ok: false, message: `требования нет в ${cap}`, missing: rest.length === 1 ? { cap, slug: rest[0] } : null };
+  const near = (wanted: string, slugs: string[]) => slugs.find((s) => distance(s, wanted) <= 2);
+  if (!item) {
+    const req = rest.length === 1 ? near(rest[0], [...capability.reqs.values()].map((r) => r.slug)) : undefined;
+    return { ok: false, message: `требования нет в ${cap}`, missing: rest.length === 1 ? { cap, slug: rest[0] } : null, near: req && `${cap}/${req}${scenario === undefined ? "" : `#${scenario}`}` };
+  }
   if (scenario === undefined) return { ok: true, at: item, key: `${cap}/${item.slug}` };
   const s = item.scenarios.find((s) => s.slug === scenario);
-  return s ? { ok: true, at: { file: item.file, line: s.line }, key: `${cap}/${item.slug}#${s.slug}` } : { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null };
+  if (s) return { ok: true, at: { file: item.file, line: s.line }, key: `${cap}/${item.slug}#${s.slug}` };
+  const sc = near(scenario, item.scenarios.map((s) => s.slug));
+  return { ok: false, message: `сценария нет в ${cap}/${item.slug}`, missing: null, near: sc && `${cap}/${item.slug}#${sc}` };
 };
 
 export type Dependency = { space: string; label: string; unchecked: boolean; missing: string | null; corpus: Corpus | null; covered: Set<string>; marks: string[] };
@@ -254,7 +260,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     }
     if (elsewhere.length)
       return fail("ref-dangling", ref, `${token}: ${result.message}; есть в открытом изменении ${elsewhere.map((e) => e.id).join(", ")}`, elsewhere.map((e) => e.at));
-    fail("ref-dangling", ref, `${token}: ${result.message}`);
+    fail("ref-dangling", ref, `${token}: ${result.message}${result.near ? `; похоже на spec:${external ? `${external[1]}:` : ""}${result.near}` : ""}`);
   }
 
   const key = (f: Finding) => [f.file ?? "", String(f.line ?? 0).padStart(9, "0"), f.rule];

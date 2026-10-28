@@ -103,7 +103,7 @@ const deltas = (change: Change, capability: string, file: string, text: string):
   });
 };
 
-export const TOKEN = /(?<![\p{L}\p{N}_\-/:])spec:([\p{L}\p{N}_\-/#:]+)/gu;
+export const TOKEN = /(?<![\p{L}\p{N}_\-/:])spec:([\p{L}\p{N}_\-–—/#:]+)/gu;
 
 export const loadOpenSpec = (base: string, root: Root): Corpus | null => {
   const rootDir = join(base, root.path);
@@ -138,7 +138,7 @@ export const loadOpenSpec = (base: string, root: Root): Corpus | null => {
     .filter((f) => f.endsWith(".md") && !f.startsWith(archiveDir + sep))
     .flatMap((f) => {
       const change = changes.find((c) => !c.change.archived && f.startsWith(c.dir + sep))?.change ?? null;
-      return toLines(text(f)).flatMap((l) => [...l.text.matchAll(TOKEN)].map((m) => ({ address: m[1], file: rel(f), line: l.line, change })));
+      return toLines(text(f)).flatMap((l) => [...l.text.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), file: rel(f), line: l.line, change })));
     });
 
   const decisionsDir = join(rootDir, "decisions");

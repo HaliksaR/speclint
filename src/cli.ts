@@ -6,7 +6,7 @@ import { loadOpenSpec } from "./openspec.js";
 import { fromManifest, toManifest } from "./manifest.js";
 import { check, type Dependency } from "./rules.js";
 import { loadMarks } from "./tests.js";
-import { exitCode, jsonReport, textReport } from "./report.js";
+import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
@@ -37,7 +37,7 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-type Config = { roots: Root[]; tests: string[] | null; dependencies: Record<string, any> };
+type Config = { roots: Root[]; tests: string[] | null; dependencies: Record<string, any>; rules: Record<string, string> };
 
 const readConfig = (file: string): Config => {
   let config;
@@ -60,7 +60,13 @@ const readConfig = (file: string): Config => {
   const dependency = (d: any) => d?.unchecked === true || (typeof d?.manifest === "string" && typeof d.version === "string");
   if (typeof dependencies !== "object" || Array.isArray(dependencies) || !Object.values(dependencies).every(dependency))
     fail("нечитаемая конфигурация: speclint.json: dependencies — { <space>: { manifest, version } | { unchecked: true } }");
-  return { roots: roots.map((r) => ({ path: r.path, space: r.space })), tests, dependencies };
+  const rules = config.rules ?? {};
+  if (typeof rules !== "object" || Array.isArray(rules)) fail("нечитаемая конфигурация: speclint.json: rules — { <правило>: off | error | warning | info }");
+  for (const [rule, level] of Object.entries(rules)) {
+    if (!RULES.includes(rule)) fail(`нечитаемая конфигурация: speclint.json: rules: неизвестное правило ${rule}`);
+    if (!["off", "error", "warning", "info"].includes(level as string)) fail(`нечитаемая конфигурация: speclint.json: rules: ${rule} — off, error, warning или info`);
+  }
+  return { roots: roots.map((r) => ({ path: r.path, space: r.space })), tests, dependencies, rules };
 };
 
 const loadDependency = (space: string, d: any): Dependency => {
@@ -81,9 +87,9 @@ const loadDependency = (space: string, d: any): Dependency => {
 };
 
 const config = join(path, "speclint.json");
-const { roots, tests, dependencies }: Config = existsSync(config)
+const { roots, tests, dependencies, rules }: Config = existsSync(config)
   ? readConfig(config)
-  : { roots: [{ path: "openspec", space: null }], tests: null, dependencies: {} };
+  : { roots: [{ path: "openspec", space: null }], tests: null, dependencies: {}, rules: {} };
 if (manifest) {
   if (!release) fail("speclint manifest: нужен --release <версия>");
   const unnamed = roots.find((r) => !r.space);
@@ -92,7 +98,8 @@ if (manifest) {
 const deps = manifest ? [] : Object.entries(dependencies).map(([space, d]) => loadDependency(space, d));
 const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корень не найден: ${path}/${root.path}`));
 const { marks, files: testFiles, literals } = loadMarks(path, roots, tests);
-const { findings, covered } = check(corpora, marks, deps, literals);
+const { findings: all, covered } = check(corpora, marks, deps, literals);
+const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
 if (manifest) {
   process.stdout.write(`${toManifest(corpora, covered, marks, release!)}\n`);
 } else {

@@ -1,0 +1,1 @@
+{ "roots": [{ "path": "openspec", "space": "x" }], "rules": { "scenario-steps-mising": "off" } }
