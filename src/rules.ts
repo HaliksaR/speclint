@@ -194,7 +194,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
 
   for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref, false);
   for (const mark of marks) {
-    const ref = { address: mark.address, file: mark.file, line: mark.line, change: null };
+    const ref = { address: mark.address, file: mark.file, line: mark.line, change: null, text: mark.text };
     const own = contexts.find((c) => c.corpus.root === mark.root);
     if (own || /^[a-z0-9-]+:/.test(mark.address)) checkReference(own ?? contexts[0], ref, true);
     else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
@@ -214,6 +214,8 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
           const near = found.find((l) => fold(l) === fold(step));
           add("warning", "scenario-steps-missing", at, `сценарий ${dep ? `${dep.space}:` : ""}${address}: шаг «${step}» не найден среди строк тестов${near ? `; похожая строка: «${near}»` : ""}`, refs);
         }
+        if (refs.length && refs.every((m) => m.text))
+          add("info", "scenario-tested-by-text", at, `сценарий ${address} держится только тестами, читающими исходники: ${[...new Set(refs.map((m) => `${m.file}:${m.line}`))].join(", ")}`);
         if ([covered, elsewhere].some((set) => set.has(req) || set.has(address))) continue;
         if (dep) {
           if ([r.capability.id, req, address].some((k) => touched.has(k)))

@@ -1,0 +1,1 @@
+{ "roots": [{ "path": "openspec", "space": "site" }], "textChecks": ["servedScript(", "os.ReadFile("], "behaviourChecks": ["doRequest("], "rules": { "scenario-steps-missing": "off" } }

@@ -28,6 +28,7 @@ export const RULES = [
   "context-dependency-undeclared",
   "context-cycle",
   "scenario-duplicate",
+  "scenario-tested-by-text",
 ];
 
 const hasErrors = (findings: Finding[]) => findings.some((f) => f.level === "error");
