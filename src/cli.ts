@@ -66,7 +66,12 @@ const readConfig = (file: string): Config => {
     if (!RULES.includes(rule)) fail(`нечитаемая конфигурация: speclint.json: rules: неизвестное правило ${rule}`);
     if (!["off", "error", "warning", "info"].includes(level as string)) fail(`нечитаемая конфигурация: speclint.json: rules: ${rule} — off, error, warning или info`);
   }
-  return { roots: roots.map((r) => ({ path: r.path, space: r.space })), tests, dependencies, rules };
+  const known = [...spaces, ...Object.keys(dependencies)];
+  const context = (r: any) =>
+    (r.class === undefined || ["core", "supporting", "generic"].includes(r.class)) &&
+    (r.uses === undefined || (Array.isArray(r.uses) && r.uses.every((u: any) => known.includes(u) && u !== r.space)));
+  if (!roots.every(context)) fail("нечитаемая конфигурация: speclint.json: roots: class — core, supporting или generic; uses — пространства корней или dependencies");
+  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, dependencies, rules };
 };
 
 const loadDependency = (space: string, d: any): Dependency => {

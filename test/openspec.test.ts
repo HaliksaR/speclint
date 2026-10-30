@@ -376,6 +376,29 @@ describe("a Go repository", () => {
   });
 });
 
+describe("bounded contexts as roots with a class and allowed dependencies", () => {
+  it("reports references outside the declared dependencies, a dependency cycle, duplicate scenarios and untested core scenarios as errors", () => {
+    const r = report("contexts");
+    const commission = "openspec/commission/specs/order/spec.md";
+    const root = (file: string, message: string) => ({ ...at("info", "scenario-untested", file, 0, message), line: null });
+    expect(withoutSteps(r)).toEqual([
+      { ...at("error", "context-cycle", "openspec/commission", 0, "цикл зависимостей контекстов: commission → platform → showcase → commission"), line: null },
+      at("error", "scenario-untested", commission, 12, "сценарий order/accept#rejected без теста"),
+      at("error", "context-dependency-undeclared", commission, 16, "spec:showcase:feed/show: контекст commission не зависит от showcase (uses: platform)"),
+      root("openspec/platform", "сценариев без теста: 1; в тестах нет ни одной метки на этот корень"),
+      root("openspec/showcase", "сценариев без теста: 1; в тестах нет ни одной метки на этот корень"),
+      at("warning", "scenario-duplicate", "openspec/showcase/specs/feed/spec.md", 8, "сценарий feed/show#order-on-the-board повторяет шаги commission:order/accept#accepted", [[commission, 8]]),
+    ]);
+    expect(r.code).toBe(1);
+  });
+
+  it("exits 2 on an unknown class or a dependency on an unknown space", () => {
+    const r = run("config-bad-context");
+    expect(r.stderr).toContain("roots: class — core, supporting или generic; uses — пространства корней или dependencies");
+    expect(r.status).toBe(2);
+  });
+});
+
 describe("the ticketly organization of five repositories", () => {
   const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
   const lines = (name: string) => run(`ticketly/${name}`).stdout.trim().split("\n");

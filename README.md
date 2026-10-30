@@ -63,6 +63,20 @@ A reference in Markdown or a mark in a test is the token `spec:<address>`:
 
 `off` switches a rule off, `error`/`warning`/`info` change its level; the exit code follows the new levels. An unknown rule or level exits `2`.
 
+## Bounded contexts
+
+```json
+{
+  "roots": [
+    { "path": "openspec/orders", "space": "orders", "class": "core", "uses": ["access"] },
+    { "path": "openspec/showcase", "space": "showcase", "class": "supporting", "uses": ["orders"] },
+    { "path": "openspec/access", "space": "access", "class": "generic", "uses": [] }
+  ]
+}
+```
+
+A root can be a DDD bounded context: `uses` is its context map — a reference to a space outside `uses` is `context-dependency-undeclared`, a cycle is `context-cycle`. In a `core` context an untested scenario is an error. A scenario repeating the steps of another is `scenario-duplicate`.
+
 ## Decisions
 
 `<root>/decisions/<id>.md` with front matter `status: active | superseded | revoked`, `superseded-by: <id>` and a `## Rationale` section. Referencing a superseded decision as if it were current is an error.
@@ -116,6 +130,9 @@ References and marks `spec:identity:…` are checked offline against the copy wi
 | `dependency-missing` | error | namespace not in `dependencies`, or manifest missing |
 | `scenario-untested-anywhere` | warning | scenario not covered in any known repository |
 | `scenario-steps-missing` | warning | scenario step not found verbatim in marked tests |
+| `context-dependency-undeclared` | error | reference to a context outside `uses` |
+| `context-cycle` | error | cycle in `uses` |
+| `scenario-duplicate` | warning | scenario repeats the steps of another |
 
 Design, contracts and decisions (in Russian): [PLAN.md](PLAN.md), [docs/architecture.md](docs/architecture.md), [docs/requirements.md](docs/requirements.md).
 
