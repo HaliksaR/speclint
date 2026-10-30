@@ -24,7 +24,15 @@ const files = (base: string, dir: string): string[] =>
     return e.isDirectory() ? files(base, path) : e.isFile() ? [path] : [];
   });
 
-export const loadMarks = (base: string, roots: Root[], tests: string[] | null) => {
+const block = (lines: string[], from: number) => {
+  let i = from;
+  while (i < lines.length && /^\s*(\/\/|#)/.test(lines[i])) i++;
+  const end = lines.findIndex((l, k) => k > i && /^[^\s})\]]/.test(l));
+  return lines.slice(i, end < 0 ? lines.length : end).join("\n");
+};
+
+export const loadMarks = (base: string, roots: Root[], tests: string[] | null, textChecks: string[] = [], behaviourChecks: string[] = []) => {
+  const isText = (body: string) => textChecks.some((p) => body.includes(p)) && !behaviourChecks.some((p) => body.includes(p));
   const patterns = tests ? tests.map(glob) : CONVENTIONS;
   const owners = roots.map((root) => ({ root, dir: posix.dirname(posix.normalize(root.path)) }));
   const owner = (file: string) =>
@@ -35,7 +43,10 @@ export const loadMarks = (base: string, roots: Root[], tests: string[] | null) =
   const strings = new Map<string, Set<string>>();
   const marks: TestMark[] = testFiles.flatMap((file) => {
     const text = readFileSync(join(base, file), "utf8");
-    const found = text.split(/\r?\n/).flatMap((line, i) => [...line.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), root: owner(file), file, line: i + 1 })));
+    const lines = text.split(/\r?\n/);
+    const found = lines.flatMap((line, i) =>
+      [...line.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), root: owner(file), file, line: i + 1, text: isText(block(lines, i)) })),
+    );
     if (found.length) strings.set(file, new Set(literals(text, file).map((l) => l.trim())));
     return found;
   });

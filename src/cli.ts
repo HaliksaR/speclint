@@ -37,7 +37,7 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-type Config = { roots: Root[]; tests: string[] | null; dependencies: Record<string, any>; rules: Record<string, string> };
+type Config = { roots: Root[]; tests: string[] | null; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
 
 const readConfig = (file: string): Config => {
   let config;
@@ -71,7 +71,11 @@ const readConfig = (file: string): Config => {
     (r.class === undefined || ["core", "supporting", "generic"].includes(r.class)) &&
     (r.uses === undefined || (Array.isArray(r.uses) && r.uses.every((u: any) => known.includes(u) && u !== r.space)));
   if (!roots.every(context)) fail("нечитаемая конфигурация: speclint.json: roots: class — core, supporting или generic; uses — пространства корней или dependencies");
-  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, dependencies, rules };
+  const strings = (v: any) => Array.isArray(v) && v.every((t) => typeof t === "string" && t);
+  const textChecks = config.textChecks ?? [];
+  const behaviourChecks = config.behaviourChecks ?? [];
+  if (!strings(textChecks) || !strings(behaviourChecks)) fail("нечитаемая конфигурация: speclint.json: textChecks и behaviourChecks — список строк");
+  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, dependencies, rules, textChecks, behaviourChecks };
 };
 
 const loadDependency = (space: string, d: any): Dependency => {
@@ -92,9 +96,9 @@ const loadDependency = (space: string, d: any): Dependency => {
 };
 
 const config = join(path, "speclint.json");
-const { roots, tests, dependencies, rules }: Config = existsSync(config)
+const { roots, tests, dependencies, rules, textChecks, behaviourChecks }: Config = existsSync(config)
   ? readConfig(config)
-  : { roots: [{ path: "openspec", space: null }], tests: null, dependencies: {}, rules: {} };
+  : { roots: [{ path: "openspec", space: null }], tests: null, dependencies: {}, rules: {}, textChecks: [], behaviourChecks: [] };
 if (manifest) {
   if (!release) fail("speclint manifest: нужен --release <версия>");
   const unnamed = roots.find((r) => !r.space);
@@ -102,7 +106,7 @@ if (manifest) {
 }
 const deps = manifest ? [] : Object.entries(dependencies).map(([space, d]) => loadDependency(space, d));
 const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корень не найден: ${path}/${root.path}`));
-const { marks, files: testFiles, literals } = loadMarks(path, roots, tests);
+const { marks, files: testFiles, literals } = loadMarks(path, roots, tests, textChecks, behaviourChecks);
 const { findings: all, covered } = check(corpora, marks, deps, literals);
 const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
 if (manifest) {

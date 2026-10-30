@@ -399,6 +399,22 @@ describe("bounded contexts as roots with a class and allowed dependencies", () =
   });
 });
 
+describe("scenarios held only by tests that read source text", () => {
+  it("reports a scenario whose every marked test matches a textChecks pattern and keeps scenarios with a behaviour test", () => {
+    const r = report("text-checks");
+    expect(r.findings).toEqual([
+      at("info", "scenario-tested-by-text", "openspec/specs/drawer/spec.md", 12, "сценарий drawer/close-guard#script-guard держится только тестами, читающими исходники: app/drawer_test.go:9"),
+    ]);
+    expect(r.code).toBe(0);
+  });
+
+  it("exits 2 when textChecks is not a list of strings", () => {
+    const r = run("config-bad-text-checks");
+    expect(r.stderr).toContain("textChecks и behaviourChecks — список строк");
+    expect(r.status).toBe(2);
+  });
+});
+
 describe("the ticketly organization of five repositories", () => {
   const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
   const lines = (name: string) => run(`ticketly/${name}`).stdout.trim().split("\n");
