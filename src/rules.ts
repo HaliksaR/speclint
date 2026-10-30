@@ -159,6 +159,39 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     return chain;
   }
 
+  const reported = new Set<string>();
+  const walk = (path: Context[]): void => {
+    const last = path.at(-1)!;
+    for (const space of last.corpus.root.uses ?? []) {
+      const next = contexts.find((c) => c.corpus.root.space === space);
+      if (!next) continue;
+      if (next === path[0]) {
+        const key = [...path.map((c) => c.corpus.root.space)].sort().join(" ");
+        if (!reported.has(key)) {
+          reported.add(key);
+          add("error", "context-cycle", { file: path[0].corpus.root.path, line: null }, `цикл зависимостей контекстов: ${[...path, next].map((c) => c.corpus.root.space).join(" → ")}`);
+        }
+      } else if (!path.includes(next)) walk([...path, next]);
+    }
+  };
+  for (const c of contexts) walk([c]);
+
+  const seen = new Map<string, { label: string; at: Place }>();
+  for (const { corpus } of contexts)
+    for (const r of corpus.requirements)
+      for (const s of r.scenarios) {
+        const body = steps(s);
+        if (body.length < 2) continue;
+        const address = `${r.capability.id}/${r.slug}#${s.slug}`;
+        const at = { file: r.capability.file, line: s.line };
+        const first = seen.get(body.join("\n"));
+        if (!first) {
+          seen.set(body.join("\n"), { label: `${corpus.root.space ? `${corpus.root.space}:` : ""}${address}`, at });
+          continue;
+        }
+        add("warning", "scenario-duplicate", at, `сценарий ${address} повторяет шаги ${first.label}`, [first.at]);
+      }
+
   for (const own of contexts) for (const ref of own.corpus.references) checkReference(own, ref, false);
   for (const mark of marks) {
     const ref = { address: mark.address, file: mark.file, line: mark.line, change: null };
@@ -187,7 +220,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
             add("warning", "scenario-untested-anywhere", at, `сценарий ${dep.space}:${address} без теста ни в одном известном репозитории`);
         } else if (!covered.size && !elsewhere.size) unmarked++;
         else if (manifests.length) add("warning", "scenario-untested-anywhere", at, `сценарий ${address} без теста ни в одном известном репозитории`);
-        else add("warning", "scenario-untested", at, `сценарий ${address} без теста`);
+        else add(corpus.root.class === "core" ? "error" : "warning", "scenario-untested", at, `сценарий ${address} без теста`);
       }
     if (unmarked)
       add("info", manifests.length ? "scenario-untested-anywhere" : "scenario-untested", { file: corpus.root.path, line: null },
@@ -203,6 +236,9 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       if (dep?.unchecked) return add("info", "ref-external-unchecked", ref, `${token}: пространство ${dep.space} без манифеста, не проверяется`);
       return add("error", "dependency-missing", ref, `${token}: ${dep?.missing ?? `пространство ${external![1]} не объявлено в dependencies`}`);
     }
+    const uses = own.corpus.root.uses;
+    if (!test && external && uses && external[1] !== own.corpus.root.space && !uses.includes(external[1]))
+      return add("error", "context-dependency-undeclared", ref, `${token}: контекст ${own.corpus.root.space} не зависит от ${external[1]} (uses: ${uses.join(", ") || "—"})`);
     const suffix = ctx.dep ? `; зависимость ${ctx.dep.label}` : "";
     const fail = (rule: string, at: Place, message: string, related: Place[] = []) =>
       add("error", test ? "test-ref-dangling" : rule, at, message + suffix, ctx.dep ? [] : related);

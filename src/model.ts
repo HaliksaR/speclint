@@ -1,4 +1,4 @@
-export type Root = { path: string; space: string | null };
+export type Root = { path: string; space: string | null; class?: string; uses?: string[] };
 export type Capability = { root: Root; id: string; file: string };
 export type Scenario = { name: string; slug: string; line: number; steps: string[] };
 export type Requirement = { capability: Capability; name: string; slug: string; line: number; scenarios: Scenario[] };

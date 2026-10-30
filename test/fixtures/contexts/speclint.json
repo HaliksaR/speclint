@@ -1,0 +1,7 @@
+{
+  "roots": [
+    { "path": "openspec/commission", "space": "commission", "class": "core", "uses": ["platform"] },
+    { "path": "openspec/showcase", "space": "showcase", "class": "supporting", "uses": ["commission"] },
+    { "path": "openspec/platform", "space": "platform", "class": "generic", "uses": ["showcase"] }
+  ]
+}

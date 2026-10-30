@@ -1,0 +1,1 @@
+{ "roots": [{ "path": "openspec", "space": "x", "class": "main", "uses": ["ghost"] }] }
