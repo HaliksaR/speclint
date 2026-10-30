@@ -415,6 +415,19 @@ describe("scenarios held only by tests that read source text", () => {
   });
 });
 
+describe("speclint mutate", () => {
+  it("breaks the code a scenario's Go tests cover and reports mutations that survive every test of the package", () => {
+    const r = spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, "mutate", fixture("mutate"), "--format", "json"], { encoding: "utf8" });
+    const out = JSON.parse(r.stdout);
+    expect(out.scenarios).toEqual([
+      { address: "price/bulk-price#large-order", tests: ["shop/price_test.go:TestLargeOrder"], killed: 1, survived: [] },
+      { address: "price/bulk-price#small-order", tests: ["shop/price_test.go:TestSmallOrderSmoke"], killed: 1, survived: [] },
+      { address: "price/discount#discount-applied", tests: ["shop/price_test.go:TestDiscountApplied"], killed: 0, survived: ["shop/price.go:11 if !(total >= 100) {"] },
+    ]);
+    expect(r.status).toBe(1);
+  }, 120000);
+});
+
 describe("the ticketly organization of five repositories", () => {
   const cli = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
   const lines = (name: string) => run(`ticketly/${name}`).stdout.trim().split("\n");

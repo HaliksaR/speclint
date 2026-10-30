@@ -85,6 +85,14 @@ A root can be a DDD bounded context: `uses` is its context map — a reference t
 
 A test that only reads source text (a served script, a CSS file) is weaker than one that exercises behaviour. With `textChecks` set, a scenario whose every marked test matches a `textChecks` string and no `behaviourChecks` string is reported as `scenario-tested-by-text` (info). The test body runs from the mark to the next top-level declaration.
 
+## Mutation audit (Go)
+
+```bash
+npx @haliksar/speclint mutate [path] [--scope orders:review] [--budget 3] [--format json]
+```
+
+For every scenario in scope it finds the Go tests under its marks, measures their coverage, and negates the covered `if` conditions that the fewest other scenarios share (`if x {` → `if !(x) {`), up to `--budget` per scenario. If the scenario's tests still pass, the mutant is re-run against every test of the package, and only a mutant that survives them all is reported: no test holds that code. Review survivors by hand — a mutant can be equivalent (behaviour unchanged). Exit `1` if any mutation survived. Source files are changed in place for a moment and restored — run it on a copy.
+
 ## Decisions
 
 `<root>/decisions/<id>.md` with front matter `status: active | superseded | revoked`, `superseded-by: <id>` and a `## Rationale` section. Referencing a superseded decision as if it were current is an error.
