@@ -6,6 +6,7 @@ import { loadOpenSpec } from "./openspec.js";
 import { fromManifest, toManifest } from "./manifest.js";
 import { check, type Dependency } from "./rules.js";
 import { loadMarks } from "./tests.js";
+import { mutate } from "./mutate.js";
 import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -19,10 +20,16 @@ const args = process.argv.slice(2);
 let format = "text";
 let path = ".";
 let manifest = false;
+let mutating = false;
+let scope = "";
+let budget = 3;
 let release: string | undefined;
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (i === 0 && arg === "manifest") manifest = true;
+  else if (i === 0 && arg === "mutate") mutating = true;
+  else if (mutating && arg === "--scope") scope = args[++i] ?? "";
+  else if (mutating && arg === "--budget") budget = Number(args[++i]);
   else if (manifest && arg === "--release") release = args[++i];
   else if (arg === "--version") {
     process.stdout.write(`${version}\n`);
@@ -109,7 +116,18 @@ const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корен
 const { marks, files: testFiles, literals } = loadMarks(path, roots, tests, textChecks, behaviourChecks);
 const { findings: all, covered } = check(corpora, marks, deps, literals);
 const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
-if (manifest) {
+if (mutating) {
+  if (!Number.isInteger(budget) || budget < 1) fail("speclint mutate: --budget — целое число больше нуля");
+  const scenarios = mutate(path, corpora, marks, scope, budget);
+  const lost = scenarios.filter((s) => s.survived.length);
+  process.stdout.write(
+    format === "json"
+      ? `${JSON.stringify({ tool: "speclint", version, scenarios }, null, 2)}\n`
+      : scenarios.flatMap((s) => s.survived.map((m) => `${m}: мутация пережила тесты сценария ${s.address} (${s.tests.join(", ")})\n`)).join("") +
+          `speclint mutate: сценариев ${scenarios.length}, убито мутаций ${scenarios.reduce((n, s) => n + s.killed, 0)}, выжило ${lost.reduce((n, s) => n + s.survived.length, 0)}\n`,
+  );
+  process.exitCode = lost.length ? 1 : 0;
+} else if (manifest) {
   process.stdout.write(`${toManifest(corpora, covered, marks, release!)}\n`);
 } else {
   const files = corpora.reduce((n, c) => n + c.files, testFiles + new Set(deps.filter((d) => d.corpus).map((d) => d.corpus!.root.path)).size);
