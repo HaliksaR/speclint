@@ -1,0 +1,6 @@
+{
+  "roots": [
+    { "path": "openspec/orders", "space": "orders", "class": "core", "uses": ["billing"] },
+    { "path": "openspec/billing", "space": "billing", "class": "generic", "uses": [] }
+  ]
+}

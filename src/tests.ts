@@ -28,7 +28,8 @@ const block = (lines: string[], from: number) => {
   let i = from;
   while (i < lines.length && /^\s*(\/\/|#)/.test(lines[i])) i++;
   const end = lines.findIndex((l, k) => k > i && /^[^\s})\]]/.test(l));
-  return lines.slice(i, end < 0 ? lines.length : end).join("\n");
+  const e = end < 0 ? lines.length : end;
+  return { body: lines.slice(i, e).join("\n"), end: e };
 };
 
 export const loadMarks = (base: string, roots: Root[], tests: string[] | null, textChecks: string[] = [], behaviourChecks: string[] = []) => {
@@ -45,7 +46,10 @@ export const loadMarks = (base: string, roots: Root[], tests: string[] | null, t
     const text = readFileSync(join(base, file), "utf8");
     const lines = text.split(/\r?\n/);
     const found = lines.flatMap((line, i) =>
-      [...line.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), root: owner(file), file, line: i + 1, text: isText(block(lines, i)) })),
+      [...line.matchAll(TOKEN)].map((m) => {
+        const { body, end } = block(lines, i);
+        return { address: m[1].replace(/[–—]/g, "-"), root: owner(file), file, line: i + 1, text: isText(body), end };
+      }),
     );
     if (found.length) strings.set(file, new Set(literals(text, file).map((l) => l.trim())));
     return found;

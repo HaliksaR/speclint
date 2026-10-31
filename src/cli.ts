@@ -7,6 +7,7 @@ import { fromManifest, toManifest } from "./manifest.js";
 import { check, type Dependency } from "./rules.js";
 import { loadMarks } from "./tests.js";
 import { mutate } from "./mutate.js";
+import { impact } from "./impact.js";
 import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -21,6 +22,9 @@ let format = "text";
 let path = ".";
 let manifest = false;
 let mutating = false;
+let impacting = false;
+let range: string | null = null;
+let rebuild = false;
 let scope = "";
 let budget = 3;
 let release: string | undefined;
@@ -28,6 +32,9 @@ for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (i === 0 && arg === "manifest") manifest = true;
   else if (i === 0 && arg === "mutate") mutating = true;
+  else if (i === 0 && arg === "impact") impacting = true;
+  else if (impacting && arg === "--diff") range = args[++i] ?? "";
+  else if (impacting && arg === "--rebuild") rebuild = true;
   else if (mutating && arg === "--scope") scope = args[++i] ?? "";
   else if (mutating && arg === "--budget") budget = Number(args[++i]);
   else if (manifest && arg === "--release") release = args[++i];
@@ -116,7 +123,19 @@ const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корен
 const { marks, files: testFiles, literals } = loadMarks(path, roots, tests, textChecks, behaviourChecks);
 const { findings: all, covered } = check(corpora, marks, deps, literals);
 const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
-if (mutating) {
+if (impacting) {
+  const r = impact(path, corpora, marks, range, rebuild) ?? fail(`speclint impact: git diff ${range ?? "HEAD"} не выполнился`);
+  process.stdout.write(
+    format === "json"
+      ? `${JSON.stringify({ tool: "speclint", version, diff: range ?? "HEAD", ...r }, null, 2)}\n`
+      : [
+          ...r.contexts.map((c) => `контекст ${c.space ?? "-"}${c.class ? ` (${c.class})` : ""}: сценариев ${c.scenarios}\n`),
+          ...r.scenarios.map((s) => `spec:${s.address} ← ${s.reasons.join(", ")}\n`),
+          ...r.findings.map((f) => `${f.level} ${f.rule}: ${f.message}\n`),
+          `speclint impact: контекстов ${r.contexts.length}, модулей ${r.modules.length} (${r.modules.join(", ")}), сценариев ${r.scenarios.length}\n`,
+        ].join(""),
+  );
+} else if (mutating) {
   if (!Number.isInteger(budget) || budget < 1) fail("speclint mutate: --budget — целое число больше нуля");
   const scenarios = mutate(path, corpora, marks, scope, budget);
   const lost = scenarios.filter((s) => s.survived.length);

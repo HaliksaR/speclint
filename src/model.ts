@@ -15,7 +15,7 @@ export type Delta = {
 };
 export type Decision = { id: string; status: string; supersededBy: string | null; rationale: boolean; file: string };
 export type Reference = { address: string; file: string; line: number; change: Change | null; text?: boolean };
-export type TestMark = { address: string; root: Root | null; file: string; line: number; text: boolean };
+export type TestMark = { address: string; root: Root | null; file: string; line: number; text: boolean; end: number };
 export type Corpus = {
   root: Root;
   capabilities: Capability[];
