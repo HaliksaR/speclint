@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const fixture = (name: string) => new URL(`./fixtures/${name}`, import.meta.url).pathname;
@@ -426,6 +428,76 @@ describe("speclint mutate", () => {
     ]);
     expect(r.status).toBe(1);
   }, 120000);
+});
+
+describe("speclint impact", () => {
+  const repo = mkdtempSync(join(tmpdir(), "speclint-impact-"));
+  const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" });
+  const edit = (file: string, line: number, text: string) => {
+    const lines = readFileSync(join(repo, file), "utf8").split("\n");
+    lines[line - 1] = text;
+    writeFileSync(join(repo, file), lines.join("\n"));
+  };
+  const impact = (...args: string[]) => {
+    const r = spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, "impact", repo, "--format", "json", ...args], { encoding: "utf8" });
+    return { ...JSON.parse(r.stdout), code: r.status };
+  };
+  cpSync(fixture("impact"), repo, { recursive: true });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "base");
+  const tax = "shop/billing/tax.go";
+  const crosses = { level: "warning", rule: "impact-crosses-contexts", message: "изменение задевает контексты billing, orders" };
+
+  it("follows changed Go code through the tests that cover it to their scenarios in every context", () => {
+    edit(tax, 4, "\tif total >= 101 {");
+    git("commit", "-qam", "tax");
+    const r = impact("--diff", "HEAD~1..HEAD");
+    expect(r.contexts).toEqual([
+      { space: "billing", class: "generic", scenarios: 2 },
+      { space: "orders", class: "core", scenarios: 1 },
+    ]);
+    expect(r.modules).toEqual(["billing:tax", "orders:order"]);
+    expect(r.scenarios).toEqual([
+      { address: "billing:tax/vat#large-total", reasons: [`${tax}:4 (shop/billing/tax_test.go:TestLargeTotal)`] },
+      { address: "billing:tax/vat#small-total", reasons: [`${tax}:4 (shop/billing/tax_test.go:TestSmallTotal)`] },
+      { address: "orders:order/checkout#total-with-tax", reasons: [`${tax}:4 (shop/orders/order_test.go:TestTotalWithTax)`] },
+    ]);
+    expect(r.findings).toEqual([crosses]);
+    expect(r.code).toBe(0);
+    expect(existsSync(join(repo, ".speclint/coverage.json"))).toBe(true);
+  }, 120000);
+
+  it("reads the test-to-lines map from .speclint/coverage.json until --rebuild", () => {
+    const cache = join(repo, ".speclint/coverage.json");
+    const map = JSON.parse(readFileSync(cache, "utf8"));
+    map["shop/orders/order_test.go:TestConfirmed"] = [`${tax}:4`];
+    writeFileSync(cache, JSON.stringify(map));
+    const confirmed = (r: { scenarios: { address: string }[] }) => r.scenarios.some((s) => s.address === "orders:order/checkout#confirmed");
+    expect(confirmed(impact("--diff", "HEAD~1..HEAD"))).toBe(true);
+    expect(confirmed(impact("--diff", "HEAD~1..HEAD", "--rebuild"))).toBe(false);
+  }, 120000);
+
+  it("maps uncommitted spec and test lines to their scenarios and warns about a context the changed spec does not use", () => {
+    const spec = "openspec/billing/specs/tax/spec.md";
+    edit(spec, 6, "The shop SHALL take a fifth of totals above 100 as tax.");
+    edit(spec, 13, "- **THEN** no tax is taken");
+    edit("shop/orders/order_test.go", 14, '\tif Confirm(true) != "confirmed" || Confirm(false) != "pending" {');
+    const r = impact();
+    expect(r.contexts).toEqual([
+      { space: "billing", class: "generic", scenarios: 2 },
+      { space: "orders", class: "core", scenarios: 1 },
+    ]);
+    expect(r.scenarios).toEqual([
+      { address: "billing:tax/vat#large-total", reasons: [`${spec}:6`] },
+      { address: "billing:tax/vat#small-total", reasons: [`${spec}:6`, `${spec}:13`] },
+      { address: "orders:order/checkout#confirmed", reasons: ["shop/orders/order_test.go:14"] },
+    ]);
+    expect(r.findings).toEqual([
+      crosses,
+      { level: "warning", rule: "impact-context-undeclared", message: "изменение задевает контекст orders, которого нет в uses контекста billing, чьи спеки оно меняет" },
+    ]);
+  });
 });
 
 describe("the ticketly organization of five repositories", () => {

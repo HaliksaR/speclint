@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Corpus, TestMark } from "./model.js";
@@ -7,7 +7,7 @@ import type { Corpus, TestMark } from "./model.js";
 type Scenario = { address: string; keys: string[]; tests: { dir: string; file: string; name: string }[] };
 type Site = { dir: string; file: string; line: number; text: string };
 
-const testName = (lines: string[], from: number) => {
+export const testName = (lines: string[], from: number) => {
   for (let i = from; i < lines.length; i++) {
     if (/^\s*\/\//.test(lines[i])) continue;
     return lines[i].match(/^func (Test\w+)\(/)?.[1] ?? null;
@@ -15,18 +15,26 @@ const testName = (lines: string[], from: number) => {
   return null;
 };
 
-const goTest = (cwd: string, names: string[], profile?: string) =>
-  spawnSync("go", ["test", "-count=1", "-run", `^(${names.join("|")})$`, ...(profile ? [`-coverprofile=${profile}`] : []), "."], { cwd, encoding: "utf8" });
+const goTest = (cwd: string, names: string[], profile?: string, pkg?: string) =>
+  spawnSync("go", ["test", "-count=1", "-run", `^(${names.join("|")})$`, ...(profile ? [`-coverprofile=${profile}`] : []), ...(pkg ? [`-coverpkg=${pkg}`] : []), "."], { cwd, encoding: "utf8" });
 
-const covered = (base: string, dir: string, names: string[]) => {
+const goModule = (base: string, dir: string) => {
+  let d = dir;
+  while (d !== "." && !existsSync(join(base, d, "go.mod"))) d = posix.dirname(d);
+  return { dir: d, path: readFileSync(join(base, d, "go.mod"), "utf8").match(/^module\s+(\S+)/m)![1] };
+};
+
+export const covered = (base: string, dir: string, names: string[], module = false) => {
+  const mod = goModule(base, dir);
   const profile = join(mkdtempSync(join(tmpdir(), "speclint-")), "cover.out");
-  const r = goTest(join(base, dir), names, profile);
+  const r = goTest(join(base, dir), names, profile, module ? `${mod.path}/...` : undefined);
   if (r.status !== 0) return null;
   const lines = new Set<string>();
   for (const row of readFileSync(profile, "utf8").split("\n").slice(1)) {
-    const m = row.match(/\/([^/]+\.go):(\d+)\.\d+,(\d+)\.\d+ \d+ (\d+)$/);
+    const m = row.match(/^(.+\.go):(\d+)\.\d+,(\d+)\.\d+ \d+ (\d+)$/);
     if (!m || m[4] === "0") continue;
-    for (let l = Number(m[2]); l <= Number(m[3]); l++) lines.add(`${m[1]}:${l}`);
+    const file = posix.join(mod.dir, posix.relative(mod.path, m[1]));
+    for (let l = Number(m[2]); l <= Number(m[3]); l++) lines.add(`${file}:${l}`);
   }
   return lines;
 };
@@ -38,7 +46,7 @@ const sites = (base: string, dir: string, lines: Set<string>): Site[] =>
       readFileSync(join(base, dir, f), "utf8")
         .split("\n")
         .flatMap((text, i) =>
-          lines.has(`${f}:${i + 1}`) && /^\s*if [^;]+\{\s*$/.test(text) && !/err [!=]= nil/.test(text)
+          lines.has(`${posix.join(dir, f)}:${i + 1}`) && /^\s*if [^;]+\{\s*$/.test(text) && !/err [!=]= nil/.test(text)
             ? [{ dir, file: f, line: i + 1, text }]
             : [],
         ),
@@ -91,7 +99,7 @@ export const mutate = (base: string, corpora: Corpus[], marks: TestMark[], scope
     const dir = s.tests[0].dir;
     const picked = lines
       ? sites(base, dir, lines)
-          .sort((a, b) => shared.get(`${a.file}:${a.line}`)! - shared.get(`${b.file}:${b.line}`)! || a.file.localeCompare(b.file) || a.line - b.line)
+          .sort((a, b) => shared.get(`${posix.join(a.dir, a.file)}:${a.line}`)! - shared.get(`${posix.join(b.dir, b.file)}:${b.line}`)! || a.file.localeCompare(b.file) || a.line - b.line)
           .slice(0, budget)
       : [];
     let killed = 0;

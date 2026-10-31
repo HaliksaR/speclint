@@ -93,6 +93,22 @@ npx @haliksar/speclint mutate [path] [--scope orders:review] [--budget 3] [--for
 
 For every scenario in scope it finds the Go tests under its marks, measures their coverage, and negates the covered `if` conditions that the fewest other scenarios share (`if x {` → `if !(x) {`), up to `--budget` per scenario. If the scenario's tests still pass, the mutant is re-run against every test of the package, and only a mutant that survives them all is reported: no test holds that code. Review survivors by hand — a mutant can be equivalent (behaviour unchanged). Exit `1` if any mutation survived. Source files are changed in place for a moment and restored — run it on a copy.
 
+## Change impact
+
+```bash
+npx @haliksar/speclint impact [path] [--diff origin/main..HEAD] [--rebuild] [--format json]
+```
+
+Answers which scenarios, modules (capabilities) and contexts a change touches. Without `--diff` it reads the working tree against `HEAD`. Files are read from the working tree, so the end of the range must be checked out; deleted and untracked files are skipped.
+
+- A changed line in a `spec.md` under a root (current specs and change deltas) hits the scenario whose heading is above it; a line of requirement text hits every scenario of the requirement.
+- A changed line in a test file hits the scenarios of every mark whose test body (from the mark to the next top-level declaration) contains it.
+- A changed line of Go code (not `_test.go`) hits the scenarios of every marked Go test that covers it. Coverage is measured per test with `go test -run '^Name$' -coverpkg=<module>/...`, so code in other packages counts.
+
+Measuring every marked test is slow (ohkurrva.art: 1139 tests, 23 minutes, a 17 MB map), so the test → lines map is cached in `<path>/.speclint/coverage.json` (key `file_test.go:TestName`, value `file.go:line` list). Tests missing from the cache are measured and added; `--rebuild` measures all of them again. The map is built only when the diff touches Go code. Line numbers are those of the tree at build time, so rebuild after code changes outside the diff; add `.speclint/` to `.gitignore`. A failing test covers nothing.
+
+The report lists the contexts (with class) and the number of scenarios in each, the modules, and every scenario with the reasons — `file:line` ranges, with the covering test for code. Warnings: `impact-crosses-contexts` when the change touches more than one context; `impact-context-undeclared` when it touches a context missing from `uses` of a context whose specs it changes (only roots with `uses`). Exit `0` unless the run breaks.
+
 ## Decisions
 
 `<root>/decisions/<id>.md` with front matter `status: active | superseded | revoked`, `superseded-by: <id>` and a `## Rationale` section. Referencing a superseded decision as if it were current is an error.
