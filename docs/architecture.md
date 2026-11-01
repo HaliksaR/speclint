@@ -93,8 +93,11 @@ speclint [путь] [--format text|json]
 speclint manifest [путь] --release <версия>
 speclint mutate [путь] [--scope префикс] [--budget N]
 speclint impact [путь] [--diff <git-диапазон>] [--rebuild]
+speclint init [путь]
 speclint --version
 ```
+
+- `init` (M15, D65) — `src/init.ts`: пишет `speclint.json`, `openspec/app/specs/example/spec.md`, `example_test.go` и печатает строку CI; если любой из файлов есть — код `2`, ничего не пишется.
 
 - `impact` (M13, D61–D64) — `src/impact.ts`: строки изменения из `git diff -U0 --relative`; спеки → сценарии по заголовкам над строкой; тесты → метки, в теле теста которых строка (`TestMark.end` — конец тела, общий с D59); Go-код → тесты по карте покрытия `.speclint/coverage.json`, которую снимает `covered` из `src/mutate.ts` с `-coverpkg=<модуль>/...`. JSON: `{ tool, version, diff, contexts: [{ space, class, scenarios }], modules, scenarios: [{ address, reasons }], findings: [{ level, rule, message }] }`.
 
