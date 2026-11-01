@@ -11,8 +11,11 @@
 ```bash
 npx @haliksar/speclint [путь] [--format text|json]
 npx @haliksar/speclint manifest [путь] --release <версия>
+npx @haliksar/speclint init [путь]
 npx @haliksar/speclint --version
 ```
+
+`init` превращает пустую папку в рабочий старт: `speclint.json` с одним корнем `openspec/app` (пространство `app`, класс `core`), спека `openspec/app/specs/example/spec.md` с одним сценарием и Go-тест `example_test.go` с меткой `spec:app:example/greet#known-user` и шагами сценария строками. Печатает строку для гейта CI `npx @haliksar/speclint .`; `speclint .` сразу проходит без находок. Контекст, модуль и тест переименуйте под проект. Если хоть один из трёх файлов уже есть, ничего не пишется, код `2`.
 
 Без `путь` проверяется текущая папка; корень — `<путь>/openspec`. Монорепо с несколькими корнями описывается в `<путь>/speclint.json`:
 
