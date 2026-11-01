@@ -14,6 +14,14 @@
   ],
   "license": "MIT",
   "author": "haliksar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haliksar/speclint.git"
+  },
+  "homepage": "https://github.com/haliksar/speclint#readme",
+  "bugs": {
+    "url": "https://github.com/haliksar/speclint/issues"
+  },
   "type": "module",
   "bin": {
     "speclint": "dist/cli.js"
