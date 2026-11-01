@@ -11,8 +11,11 @@ No models, no network: the same files give the same report, so it fits CI and co
 ```bash
 npx @haliksar/speclint [path] [--format text|json]
 npx @haliksar/speclint manifest [path] --release <version>
+npx @haliksar/speclint init [path]
 npx @haliksar/speclint --version
 ```
+
+`init` turns an empty folder into a working start: `speclint.json` with one root `openspec/app` (space `app`, class `core`), the spec `openspec/app/specs/example/spec.md` with one scenario, and the Go test `example_test.go` marked `spec:app:example/greet#known-user` with the scenario steps as strings. It prints the CI gate line `npx @haliksar/speclint .`; `speclint .` passes clean right away. Rename the context, module and test for your project. If any of the three files already exists, nothing is written and the exit code is `2`.
 
 Without `path` the current directory is checked; the root is `<path>/openspec`.
 

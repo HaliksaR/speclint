@@ -93,8 +93,11 @@ speclint [путь] [--format text|json]
 speclint manifest [путь] --release <версия>
 speclint mutate [путь] [--scope префикс] [--budget N]
 speclint impact [путь] [--diff <git-диапазон>] [--rebuild]
+speclint init [путь]
 speclint --version
 ```
+
+- `init` (M15, D65) — `src/init.ts`: пишет `speclint.json`, `openspec/app/specs/example/spec.md`, `example_test.go` и печатает строку CI; если любой из файлов есть — код `2`, ничего не пишется.
 
 - `impact` (M13, D61–D64) — `src/impact.ts`: строки изменения из `git diff -U0 --relative`; спеки → сценарии по заголовкам над строкой; тесты → метки, в теле теста которых строка (`TestMark.end` — конец тела, общий с D59); Go-код → тесты по карте покрытия `.speclint/coverage.json`, которую снимает `covered` из `src/mutate.ts` с `-coverpkg=<модуль>/...`. JSON: `{ tool, version, diff, contexts: [{ space, class, scenarios }], modules, scenarios: [{ address, reasons }], findings: [{ level, rule, message }] }`.
 
@@ -167,7 +170,7 @@ ID латинские, стабильные; уровень — по умолч�
 | `context-cycle` | M10 | error | цикл зависимостей контекстов в `uses` |
 | `scenario-tested-by-text` | M11 | info | все тесты сценария читают исходники (`textChecks`) и ни один не проверяет поведение (`behaviourChecks`) |
 | `scenario-duplicate` | M10 | warning | сценарий повторяет шаги более раннего сценария корпуса |
-| `doc-ref-dangling` | M14 | error | токен `spec:` в файле из `docs` на несуществующий адрес (D65) |
+| `doc-ref-dangling` | M14 | error | токен `spec:` в файле из `docs` на несуществующий адрес (D66) |
 | `scenario-steps-missing` | M6 | warning | шага сценария нет дословно среди строковых литералов тестов с меткой сценария или его требования |
 
 ### Как работают правила M1
@@ -273,7 +276,7 @@ superseded-by: 0012-paseto
 - `tests` — M4; glob-шаблоны тестовых файлов, заменяют конвенции (D28). Не список строк — код `2`.
 - `roots[].class`, `roots[].uses` — M10: корень как ограниченный контекст; `class` — `core`, `supporting` или `generic` (в `core` `scenario-untested` — error, D58), `uses` — пространства корней или `dependencies`, на которые контексту можно ссылаться (D55, D56).
 - `textChecks`, `behaviourChecks` — M11: строки, по которым тест под меткой считается чтением исходников или проверкой поведения; тело теста — от метки до следующей строки с нулевым отступом, кроме закрывающих скобок (D59).
-- `docs` — M14: glob-шаблоны документов вне корней, чьи токены `spec:` проверяются как ссылки; правило — `doc-ref-dangling` (D65). Без `docs` документы не читаются; не список строк — код `2`.
+- `docs` — M14: glob-шаблоны документов вне корней, чьи токены `spec:` проверяются как ссылки; правило — `doc-ref-dangling` (D66). Без `docs` документы не читаются; не список строк — код `2`.
 - `rules` — M9; `{ <правило>: off | error | warning | info }`: `off` выключает правило, уровень заменяет уровень по умолчанию, код возврата считается после замены (D52). Неизвестное правило или уровень — код `2`.
 - `dependencies` — M5; ключ — пространство, значение — `{ manifest, version }` (путь к локальной копии манифеста относительно репозитория и зафиксированная версия) или `{ unchecked: true }` (пространство сознательно не проверяется). Иначе — код `2`.
 

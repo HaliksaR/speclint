@@ -64,3 +64,27 @@ describe("output to a pipe", () => {
     expect(r.status).toBe(1);
   });
 });
+
+describe("speclint init", () => {
+  it("turns an empty folder into a project that speclint passes clean", () => {
+    const dir = mkdtempSync(join(tmpdir(), "speclint-"));
+    const r = cli("init", dir);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("npx @haliksar/speclint .");
+    const config = JSON.parse(readFileSync(join(dir, "speclint.json"), "utf8"));
+    expect(config.roots).toEqual([{ path: "openspec/app", space: "app", class: "core", uses: [] }]);
+    expect(readFileSync(join(dir, "example_test.go"), "utf8")).toContain("spec:app:example/");
+    const check = cli(dir, "--format", "json");
+    expect(JSON.parse(check.stdout).findings).toEqual([]);
+    expect(check.status).toBe(0);
+  });
+
+  it("refuses to overwrite an existing project", () => {
+    const dir = mkdtempSync(join(tmpdir(), "speclint-"));
+    writeFileSync(join(dir, "speclint.json"), "{}");
+    const r = cli("init", dir);
+    expect(r.stderr).toContain("speclint.json");
+    expect(r.status).toBe(2);
+    expect(readFileSync(join(dir, "speclint.json"), "utf8")).toBe("{}");
+  });
+});

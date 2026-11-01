@@ -8,6 +8,7 @@ import { check, type Dependency } from "./rules.js";
 import { loadDocs, loadMarks } from "./tests.js";
 import { mutate } from "./mutate.js";
 import { impact } from "./impact.js";
+import { init } from "./init.js";
 import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -23,6 +24,7 @@ let path = ".";
 let manifest = false;
 let mutating = false;
 let impacting = false;
+let initing = false;
 let range: string | null = null;
 let rebuild = false;
 let scope = "";
@@ -33,6 +35,7 @@ for (let i = 0; i < args.length; i++) {
   if (i === 0 && arg === "manifest") manifest = true;
   else if (i === 0 && arg === "mutate") mutating = true;
   else if (i === 0 && arg === "impact") impacting = true;
+  else if (i === 0 && arg === "init") initing = true;
   else if (impacting && arg === "--diff") range = args[++i] ?? "";
   else if (impacting && arg === "--rebuild") rebuild = true;
   else if (mutating && arg === "--scope") scope = args[++i] ?? "";
@@ -49,6 +52,13 @@ for (let i = 0; i < args.length; i++) {
   } else {
     path = arg;
   }
+}
+
+if (initing) {
+  const taken = init(path);
+  if (taken) fail(`speclint init: ${taken} уже есть`);
+  process.stdout.write("speclint init: openspec/app, speclint.json, example_test.go; строка для CI: npx @haliksar/speclint .\n");
+  process.exit(0);
 }
 
 type Config = { roots: Root[]; tests: string[] | null; docs: string[]; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
