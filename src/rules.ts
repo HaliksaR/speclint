@@ -69,7 +69,7 @@ const resolve = (view: View, target: string): Resolved => {
 export type Dependency = { space: string; label: string; unchecked: boolean; missing: string | null; corpus: Corpus | null; covered: Set<string>; marks: string[] };
 type Context = { corpus: Corpus; open: Change[]; archived: Change[]; main: View; views: Map<Change, View>; covered: Set<string>; hits: Map<string, Reference[]>; known: Set<string>; touched: Set<string>; dep: Dependency | null };
 
-export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = [], literals = new Map<string, Set<string>>()) => {
+export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] = [], literals = new Map<string, Set<string>>(), docs: Reference[] = []) => {
   const findings: Finding[] = [];
   const add = (level: Finding["level"], rule: string, at: Place, message: string, related: Place[] = []) =>
     findings.push({ level, rule, file: at.file, line: at.line, message, related: related.map((p) => ({ file: p.file, line: p.line })) });
@@ -199,6 +199,10 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
     if (own || /^[a-z0-9-]+:/.test(mark.address)) checkReference(own ?? contexts[0], ref, true);
     else add("error", "test-ref-dangling", ref, `spec:${mark.address}: тест вне корней, нужен адрес с пространством`);
   }
+  for (const ref of docs) {
+    if (contexts.length === 1 || /^[a-z0-9-]+:/.test(ref.address)) checkReference(contexts[0], ref, false, true);
+    else add("error", "doc-ref-dangling", ref, `spec:${ref.address}: документ вне корней, нужен адрес с пространством`);
+  }
   const fold = (s: string) => s.toLowerCase().replaceAll("ё", "е").replace(/\s+/g, " ");
   for (const { corpus, covered, hits, known: elsewhere, touched, dep } of all) {
     let unmarked = 0;
@@ -229,7 +233,7 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
         `сценариев без теста: ${unmarked}; в тестах нет ни одной метки на этот корень`);
   }
 
-  function checkReference(own: Context, ref: Reference, test: boolean) {
+  function checkReference(own: Context, ref: Reference, test: boolean, doc = false) {
     const token = `spec:${ref.address}`;
     const external = ref.address.match(/^([a-z0-9-]+):(.*)$/);
     const ctx = external ? all.find((c) => c.corpus.root.space === external[1]) : own;
@@ -239,11 +243,11 @@ export const check = (corpora: Corpus[], marks: TestMark[], deps: Dependency[] =
       return add("error", "dependency-missing", ref, `${token}: ${dep?.missing ?? `пространство ${external![1]} не объявлено в dependencies`}`);
     }
     const uses = own.corpus.root.uses;
-    if (!test && external && uses && external[1] !== own.corpus.root.space && !uses.includes(external[1]))
+    if (!test && !doc && external && uses && external[1] !== own.corpus.root.space && !uses.includes(external[1]))
       return add("error", "context-dependency-undeclared", ref, `${token}: контекст ${own.corpus.root.space} не зависит от ${external[1]} (uses: ${uses.join(", ") || "—"})`);
     const suffix = ctx.dep ? `; зависимость ${ctx.dep.label}` : "";
     const fail = (rule: string, at: Place, message: string, related: Place[] = []) =>
-      add("error", test ? "test-ref-dangling" : rule, at, message + suffix, ctx.dep ? [] : related);
+      add("error", test ? "test-ref-dangling" : doc ? "doc-ref-dangling" : rule, at, message + suffix, ctx.dep ? [] : related);
     const { open, archived, views } = ctx;
     const local = ctx === own ? ref.change : null;
     const target = external ? external[2] : ref.address;

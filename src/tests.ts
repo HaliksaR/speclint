@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
-import type { Root, TestMark } from "./model.js";
+import type { Reference, Root, TestMark } from "./model.js";
 import { TOKEN } from "./openspec.js";
 import { literals } from "./literals.js";
 
@@ -55,4 +55,16 @@ export const loadMarks = (base: string, roots: Root[], tests: string[] | null, t
     return found;
   });
   return { marks, files: testFiles.length, literals: strings };
+};
+
+export const loadDocs = (base: string, roots: Root[], docs: string[]) => {
+  const patterns = docs.map(glob);
+  const inRoot = (f: string) => roots.some((r) => f.startsWith(`${posix.normalize(r.path)}/`));
+  const docFiles = docs.length ? files(base, "").filter((f) => patterns.some((p) => p.test(f)) && !inRoot(f)) : [];
+  const refs: Reference[] = docFiles.flatMap((file) =>
+    readFileSync(join(base, file), "utf8")
+      .split(/\r?\n/)
+      .flatMap((line, i) => [...line.matchAll(TOKEN)].map((m) => ({ address: m[1].replace(/[–—]/g, "-"), file, line: i + 1, change: null }))),
+  );
+  return { refs, files: docFiles.length };
 };
