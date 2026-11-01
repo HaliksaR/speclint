@@ -417,6 +417,25 @@ describe("scenarios held only by tests that read source text", () => {
   });
 });
 
+describe("spec: links in documents outside the roots", () => {
+  it("reports a link in a docs file that does not lead to an existing requirement or scenario, with a near address", () => {
+    const r = uncovered("docs");
+    const doc = "docs/site/commissions.md";
+    expect(r.findings).toEqual([
+      at("error", "doc-ref-dangling", doc, 5, "spec:orders:intake/accept-requst: требования нет в intake; похоже на spec:orders:intake/accept-request"),
+      at("error", "doc-ref-dangling", doc, 6, "spec:orders:intake/accept-request#valid-reqest: сценария нет в intake/accept-request; похоже на spec:orders:intake/accept-request#valid-request"),
+      at("error", "doc-ref-dangling", doc, 7, "spec:intake/accept-request: документ вне корней, нужен адрес с пространством"),
+    ]);
+    expect(r.code).toBe(1);
+  });
+
+  it("exits 2 when docs is not a list of globs", () => {
+    const r = run("config-bad-docs");
+    expect(r.stderr).toContain("docs — список glob-шаблонов");
+    expect(r.status).toBe(2);
+  });
+});
+
 describe("speclint mutate", () => {
   it("breaks the code a scenario's Go tests cover and reports mutations that survive every test of the package", () => {
     const r = spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, "mutate", fixture("mutate"), "--format", "json"], { encoding: "utf8" });

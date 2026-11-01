@@ -1,0 +1,7 @@
+{
+  "roots": [
+    { "path": "openspec/orders", "space": "orders", "uses": [] },
+    { "path": "openspec/access", "space": "access" }
+  ],
+  "docs": ["docs/**/*.md"]
+}

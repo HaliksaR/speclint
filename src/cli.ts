@@ -5,7 +5,7 @@ import type { Root } from "./model.js";
 import { loadOpenSpec } from "./openspec.js";
 import { fromManifest, toManifest } from "./manifest.js";
 import { check, type Dependency } from "./rules.js";
-import { loadMarks } from "./tests.js";
+import { loadDocs, loadMarks } from "./tests.js";
 import { mutate } from "./mutate.js";
 import { impact } from "./impact.js";
 import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
@@ -51,7 +51,7 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-type Config = { roots: Root[]; tests: string[] | null; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
+type Config = { roots: Root[]; tests: string[] | null; docs: string[]; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
 
 const readConfig = (file: string): Config => {
   let config;
@@ -70,6 +70,8 @@ const readConfig = (file: string): Config => {
   const tests = config.tests ?? null;
   if (tests !== null && (!Array.isArray(tests) || !tests.every((t) => typeof t === "string")))
     fail("нечитаемая конфигурация: speclint.json: tests — список glob-шаблонов");
+  const docs = config.docs ?? [];
+  if (!Array.isArray(docs) || !docs.every((t) => typeof t === "string")) fail("нечитаемая конфигурация: speclint.json: docs — список glob-шаблонов");
   const dependencies = config.dependencies ?? {};
   const dependency = (d: any) => d?.unchecked === true || (typeof d?.manifest === "string" && typeof d.version === "string");
   if (typeof dependencies !== "object" || Array.isArray(dependencies) || !Object.values(dependencies).every(dependency))
@@ -89,7 +91,7 @@ const readConfig = (file: string): Config => {
   const textChecks = config.textChecks ?? [];
   const behaviourChecks = config.behaviourChecks ?? [];
   if (!strings(textChecks) || !strings(behaviourChecks)) fail("нечитаемая конфигурация: speclint.json: textChecks и behaviourChecks — список строк");
-  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, dependencies, rules, textChecks, behaviourChecks };
+  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, docs, dependencies, rules, textChecks, behaviourChecks };
 };
 
 const loadDependency = (space: string, d: any): Dependency => {
@@ -110,9 +112,9 @@ const loadDependency = (space: string, d: any): Dependency => {
 };
 
 const config = join(path, "speclint.json");
-const { roots, tests, dependencies, rules, textChecks, behaviourChecks }: Config = existsSync(config)
+const { roots, tests, docs, dependencies, rules, textChecks, behaviourChecks }: Config = existsSync(config)
   ? readConfig(config)
-  : { roots: [{ path: "openspec", space: null }], tests: null, dependencies: {}, rules: {}, textChecks: [], behaviourChecks: [] };
+  : { roots: [{ path: "openspec", space: null }], tests: null, docs: [], dependencies: {}, rules: {}, textChecks: [], behaviourChecks: [] };
 if (manifest) {
   if (!release) fail("speclint manifest: нужен --release <версия>");
   const unnamed = roots.find((r) => !r.space);
@@ -121,7 +123,8 @@ if (manifest) {
 const deps = manifest ? [] : Object.entries(dependencies).map(([space, d]) => loadDependency(space, d));
 const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корень не найден: ${path}/${root.path}`));
 const { marks, files: testFiles, literals } = loadMarks(path, roots, tests, textChecks, behaviourChecks);
-const { findings: all, covered } = check(corpora, marks, deps, literals);
+const { refs: docRefs, files: docFiles } = loadDocs(path, roots, docs);
+const { findings: all, covered } = check(corpora, marks, deps, literals, docRefs);
 const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
 if (impacting) {
   const r = impact(path, corpora, marks, range, rebuild) ?? fail(`speclint impact: git diff ${range ?? "HEAD"} не выполнился`);
@@ -149,7 +152,7 @@ if (impacting) {
 } else if (manifest) {
   process.stdout.write(`${toManifest(corpora, covered, marks, release!)}\n`);
 } else {
-  const files = corpora.reduce((n, c) => n + c.files, testFiles + new Set(deps.filter((d) => d.corpus).map((d) => d.corpus!.root.path)).size);
+  const files = corpora.reduce((n, c) => n + c.files, testFiles + docFiles + new Set(deps.filter((d) => d.corpus).map((d) => d.corpus!.root.path)).size);
   process.stdout.write(`${format === "json" ? jsonReport(version, findings, files) : textReport(findings, files)}\n`);
   process.exitCode = exitCode(findings);
 }

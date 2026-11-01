@@ -85,6 +85,14 @@ A root can be a DDD bounded context: `uses` is its context map — a reference t
 
 A test that only reads source text (a served script, a CSS file) is weaker than one that exercises behaviour. With `textChecks` set, a scenario whose every marked test matches a `textChecks` string and no `behaviourChecks` string is reported as `scenario-tested-by-text` (info). The test body runs from the mark to the next top-level declaration.
 
+## Links in documents
+
+```json
+{ "docs": ["docs/**/*.md"] }
+```
+
+`spec:` tokens in files matching `docs` (outside the roots, which are checked anyway) must lead to an existing requirement, scenario, change or decision; otherwise `doc-ref-dangling` (error) with the same message as for a reference, including the "looks like spec:…" hint. With several roots the address needs a namespace. Without `docs` no documents are read.
+
 ## Mutation audit (Go)
 
 ```bash
@@ -166,6 +174,7 @@ References and marks `spec:identity:…` are checked offline against the copy wi
 | `context-cycle` | error | cycle in `uses` |
 | `scenario-duplicate` | warning | scenario repeats the steps of another |
 | `scenario-tested-by-text` | info | scenario is held only by tests that read source text |
+| `doc-ref-dangling` | error | link in a `docs` file to a missing address |
 
 Design, contracts and decisions (in Russian): [PLAN.md](PLAN.md), [docs/architecture.md](docs/architecture.md), [docs/requirements.md](docs/requirements.md).
 
