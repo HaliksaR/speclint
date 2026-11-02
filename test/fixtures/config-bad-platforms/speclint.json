@@ -1,0 +1,4 @@
+{
+  "roots": [{ "path": "openspec/app", "space": "app" }],
+  "platforms": { "ios": "ios/**" }
+}

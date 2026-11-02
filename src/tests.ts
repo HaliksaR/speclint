@@ -14,7 +14,7 @@ const CONVENTIONS = [
   /_test\.go$/,
 ];
 
-const glob = (g: string) =>
+export const glob = (g: string) =>
   new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/|\*\*|\*|\?/g, (m) => ({ "**/": "(.*/)?", "**": ".*", "*": "[^/]*" })[m] ?? "[^/]")}$`);
 
 const files = (base: string, dir: string): string[] =>
