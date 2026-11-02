@@ -147,6 +147,7 @@
 - [x] Пакет: `LICENSE`, `keywords`, английский README для npm (русский — `README.ru.md`), проверка `npm pack` и запуска из тарбола
 - [x] Публикация: github.com/HaliksaR/speclint, тег `v0.1.0`, npm `@haliksar/speclint@0.1.0` (2026-11-01, пользователь)
 - [x] Версия 0.2.0: M14 (`doc-ref-dangling`) и M15 (`speclint init`), тег `v0.2.0`, npm `@haliksar/speclint@0.2.0` (2026-11-02)
+- [x] Версия 0.3.0: M16 (платформы: `speclint platforms`, `speclint view --platform`, `scenario-untested-on-platform`), тег `v0.3.0`, npm `@haliksar/speclint@0.3.0` (2026-11-02)
 - [ ] Прогон на рабочем проекте пользователя — делает пользователь (проекта нет на этой машине)
 
 ### M9 — Go и настройка правил по пилоту ohkurrva.art (`feat/m9-go`)
