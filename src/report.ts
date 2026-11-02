@@ -30,6 +30,7 @@ export const RULES = [
   "scenario-duplicate",
   "scenario-tested-by-text",
   "doc-ref-dangling",
+  "scenario-untested-on-platform",
 ];
 
 const hasErrors = (findings: Finding[]) => findings.some((f) => f.level === "error");

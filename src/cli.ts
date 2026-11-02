@@ -9,6 +9,7 @@ import { loadDocs, loadMarks } from "./tests.js";
 import { mutate } from "./mutate.js";
 import { impact } from "./impact.js";
 import { init } from "./init.js";
+import { matrix, table, untested, view } from "./platforms.js";
 import { exitCode, jsonReport, RULES, textReport, type Finding } from "./report.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -25,6 +26,10 @@ let manifest = false;
 let mutating = false;
 let impacting = false;
 let initing = false;
+let matrixing = false;
+let viewing = false;
+let platform = "";
+let module: string | null = null;
 let range: string | null = null;
 let rebuild = false;
 let scope = "";
@@ -36,6 +41,10 @@ for (let i = 0; i < args.length; i++) {
   else if (i === 0 && arg === "mutate") mutating = true;
   else if (i === 0 && arg === "impact") impacting = true;
   else if (i === 0 && arg === "init") initing = true;
+  else if (i === 0 && arg === "platforms") matrixing = true;
+  else if (i === 0 && arg === "view") viewing = true;
+  else if (viewing && arg === "--platform") platform = args[++i] ?? "";
+  else if (viewing && /^[a-z0-9-]+:/.test(arg)) module = arg;
   else if (impacting && arg === "--diff") range = args[++i] ?? "";
   else if (impacting && arg === "--rebuild") rebuild = true;
   else if (mutating && arg === "--scope") scope = args[++i] ?? "";
@@ -61,7 +70,7 @@ if (initing) {
   process.exit(0);
 }
 
-type Config = { roots: Root[]; tests: string[] | null; docs: string[]; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
+type Config = { roots: Root[]; tests: string[] | null; docs: string[]; platforms: Record<string, string[]>; dependencies: Record<string, any>; rules: Record<string, string>; textChecks: string[]; behaviourChecks: string[] };
 
 const readConfig = (file: string): Config => {
   let config;
@@ -82,6 +91,9 @@ const readConfig = (file: string): Config => {
     fail("нечитаемая конфигурация: speclint.json: tests — список glob-шаблонов");
   const docs = config.docs ?? [];
   if (!Array.isArray(docs) || !docs.every((t) => typeof t === "string")) fail("нечитаемая конфигурация: speclint.json: docs — список glob-шаблонов");
+  const platforms = config.platforms ?? {};
+  if (typeof platforms !== "object" || Array.isArray(platforms) || !Object.values(platforms).every((g) => Array.isArray(g) && g.every((t) => typeof t === "string")))
+    fail("нечитаемая конфигурация: speclint.json: platforms — { <платформа>: [glob-шаблоны] }");
   const dependencies = config.dependencies ?? {};
   const dependency = (d: any) => d?.unchecked === true || (typeof d?.manifest === "string" && typeof d.version === "string");
   if (typeof dependencies !== "object" || Array.isArray(dependencies) || !Object.values(dependencies).every(dependency))
@@ -101,7 +113,7 @@ const readConfig = (file: string): Config => {
   const textChecks = config.textChecks ?? [];
   const behaviourChecks = config.behaviourChecks ?? [];
   if (!strings(textChecks) || !strings(behaviourChecks)) fail("нечитаемая конфигурация: speclint.json: textChecks и behaviourChecks — список строк");
-  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, docs, dependencies, rules, textChecks, behaviourChecks };
+  return { roots: roots.map((r) => ({ path: r.path, space: r.space, class: r.class, uses: r.uses })), tests, docs, platforms, dependencies, rules, textChecks, behaviourChecks };
 };
 
 const loadDependency = (space: string, d: any): Dependency => {
@@ -122,9 +134,9 @@ const loadDependency = (space: string, d: any): Dependency => {
 };
 
 const config = join(path, "speclint.json");
-const { roots, tests, docs, dependencies, rules, textChecks, behaviourChecks }: Config = existsSync(config)
+const { roots, tests, docs, platforms, dependencies, rules, textChecks, behaviourChecks }: Config = existsSync(config)
   ? readConfig(config)
-  : { roots: [{ path: "openspec", space: null }], tests: null, docs: [], dependencies: {}, rules: {}, textChecks: [], behaviourChecks: [] };
+  : { roots: [{ path: "openspec", space: null }], tests: null, docs: [], platforms: {}, dependencies: {}, rules: {}, textChecks: [], behaviourChecks: [] };
 if (manifest) {
   if (!release) fail("speclint manifest: нужен --release <версия>");
   const unnamed = roots.find((r) => !r.space);
@@ -135,8 +147,18 @@ const corpora = roots.map((root) => loadOpenSpec(path, root) ?? fail(`корен
 const { marks, files: testFiles, literals } = loadMarks(path, roots, tests, textChecks, behaviourChecks);
 const { refs: docRefs, files: docFiles } = loadDocs(path, roots, docs);
 const { findings: all, covered } = check(corpora, marks, deps, literals, docRefs);
-const findings = all.filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
-if (impacting) {
+const names = Object.keys(platforms);
+if ((matrixing || viewing) && !names.length) fail("в speclint.json нет platforms");
+if (viewing && !names.includes(platform)) fail(`неизвестная платформа: ${platform}`);
+const rows = names.length ? matrix(corpora, platforms, marks, (m) => check(corpora, m, deps, literals, docRefs).covered) : [];
+const findings = [...all, ...untested(rows)].filter((f) => rules[f.rule] !== "off").map((f) => (rules[f.rule] ? { ...f, level: rules[f.rule] as Finding["level"] } : f));
+if (matrixing) {
+  process.stdout.write(
+    format === "json" ? `${JSON.stringify({ tool: "speclint", version, platforms: names, scenarios: rows.map((r) => ({ address: r.address, platforms: r.platforms })) }, null, 2)}\n` : table(rows, names),
+  );
+} else if (viewing) {
+  process.stdout.write(view(path, corpora, platform, names, module));
+} else if (impacting) {
   const r = impact(path, corpora, marks, range, rebuild) ?? fail(`speclint impact: git diff ${range ?? "HEAD"} не выполнился`);
   process.stdout.write(
     format === "json"

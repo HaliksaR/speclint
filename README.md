@@ -12,6 +12,8 @@ No models, no network: the same files give the same report, so it fits CI and co
 npx @haliksar/speclint [path] [--format text|json]
 npx @haliksar/speclint manifest [path] --release <version>
 npx @haliksar/speclint init [path]
+npx @haliksar/speclint platforms [path] [--format text|json]
+npx @haliksar/speclint view --platform <name> [<space>:<capability>] [path]
 npx @haliksar/speclint --version
 ```
 
@@ -96,6 +98,20 @@ A test that only reads source text (a served script, a CSS file) is weaker than 
 
 `spec:` tokens in files matching `docs` (outside the roots, which are checked anyway) must lead to an existing requirement, scenario, change or decision; otherwise `doc-ref-dangling` (error) with the same message as for a reference, including the "looks like spec:…" hint. With several roots the address needs a namespace. Without `docs` no documents are read.
 
+## Platforms
+
+One shared spec for all platforms; a scenario that holds for only some of them carries their names as a prefix: `#### Scenario: iOS: Apple Pay`, `#### Scenario: Web, Android: Saved card` (case-insensitive, only names from `platforms`). A scenario without a prefix belongs to every platform. The label keeps the prefix in its slug: `spec:orders:payment/pay-order#ios-apple-pay`.
+
+```json
+{ "platforms": { "web": ["web/**/*.test.ts"], "ios": ["ios/**/*Tests.swift"], "android": ["android/**/*Test.kt"] } }
+```
+
+A test counts for a platform when its file matches one of the platform's globs (the file must still be a test file by conventions or `tests`).
+
+- `speclint platforms [path]` prints a markdown table "scenario × platform": `✓` a marked test in the platform's paths, `✗` the scenario belongs to the platform but has none, `—` it does not belong. `--format json` gives `scenarios[].platforms.<name>` as `true`, `false` or `null`. Exit code `0`.
+- `speclint view --platform ios [orders:payment] [path]` prints the specs (main specs of every root, or one module) as one platform sees them: shared scenarios and its own, prefixes removed, other platforms' scenarios and requirements left without scenarios dropped.
+- `scenario-untested-on-platform` (warning, error in a `core` context): a scenario tested somewhere has no test on a platform it belongs to. A scenario without any test is reported only by `scenario-untested`.
+
 ## Mutation audit (Go)
 
 ```bash
@@ -178,6 +194,7 @@ References and marks `spec:identity:…` are checked offline against the copy wi
 | `scenario-duplicate` | warning | scenario repeats the steps of another |
 | `scenario-tested-by-text` | info | scenario is held only by tests that read source text |
 | `doc-ref-dangling` | error | link in a `docs` file to a missing address |
+| `scenario-untested-on-platform` | warning (error in `core`) | scenario tested elsewhere has no test on one of its platforms |
 
 Design, contracts and decisions (in Russian): [PLAN.md](PLAN.md), [docs/architecture.md](docs/architecture.md), [docs/requirements.md](docs/requirements.md).
 

@@ -436,6 +436,85 @@ describe("spec: links in documents outside the roots", () => {
   });
 });
 
+describe("platforms in speclint.json", () => {
+  const command = (...args: string[]) => spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, ...args], { encoding: "utf8" });
+  const payment = "openspec/orders/specs/payment/spec.md";
+  const push = "openspec/notices/specs/push/spec.md";
+
+  it("reports a scenario tested on some platforms but not on another one it belongs to, as an error in a core context", () => {
+    const r = report("platforms");
+    expect(r.findings.filter((f: { rule: string }) => f.rule.startsWith("scenario-untested"))).toEqual([
+      at("error", "scenario-untested", payment, 26, "сценарий payment/widget#ios-widget-shows-status без теста"),
+      at("error", "scenario-untested-on-platform", payment, 19, "сценарий payment/pay-order#web-android-saved-card без теста на платформе android"),
+      at("warning", "scenario-untested-on-platform", push, 11, "сценарий push/push#delivered без теста на платформе web"),
+      at("warning", "scenario-untested-on-platform", push, 11, "сценарий push/push#delivered без теста на платформе android"),
+    ]);
+    expect(r.code).toBe(1);
+  });
+
+  it("prints the scenario by platform matrix as JSON", () => {
+    const r = command("platforms", fixture("platforms"), "--format", "json");
+    const row = (address: string, web: boolean | null, ios: boolean | null, android: boolean | null) => ({ address, platforms: { web, ios, android } });
+    expect(JSON.parse(r.stdout).scenarios).toEqual([
+      row("orders:payment/pay-order#card-payment", true, true, true),
+      row("orders:payment/pay-order#ios-apple-pay", null, true, null),
+      row("orders:payment/pay-order#web-android-saved-card", true, null, false),
+      row("orders:payment/widget#ios-widget-shows-status", null, false, null),
+      row("notices:push/push#delivered", false, true, false),
+      row("notices:push/push#android-quiet-hours", null, null, true),
+    ]);
+    expect(r.status).toBe(0);
+  });
+
+  it("prints the matrix as a markdown table", () => {
+    const r = command("platforms", fixture("platforms"));
+    expect(r.stdout).toBe(
+      [
+        "| сценарий | web | ios | android |",
+        "|---|---|---|---|",
+        "| orders:payment/pay-order#card-payment | ✓ | ✓ | ✓ |",
+        "| orders:payment/pay-order#ios-apple-pay | — | ✓ | — |",
+        "| orders:payment/pay-order#web-android-saved-card | ✓ | — | ✗ |",
+        "| orders:payment/widget#ios-widget-shows-status | — | ✗ | — |",
+        "| notices:push/push#delivered | ✗ | ✓ | ✗ |",
+        "| notices:push/push#android-quiet-hours | — | — | ✓ |",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("prints one module as seen by one platform: shared scenarios and its own, without the prefix", () => {
+    const r = command("view", "--platform", "ios", "orders:payment", fixture("platforms"));
+    expect(r.stdout).toBe(
+      readFileSync(join(fixture("platforms"), payment), "utf8")
+        .replace("iOS: Apple Pay", "Apple Pay")
+        .replace(/#### Scenario: Web, Android: Saved card\n.*\n.*\n\n/, "")
+        .replace("iOS: Widget shows status", "Widget shows status"),
+    );
+    expect(r.status).toBe(0);
+  });
+
+  it("prints every module for a platform and hides requirements without its scenarios", () => {
+    const r = command("view", "--platform", "android", fixture("platforms"));
+    expect(r.stdout).toContain("#### Scenario: Saved card\n");
+    expect(r.stdout).toContain("#### Scenario: Quiet hours\n");
+    expect(r.stdout).not.toContain("Apple Pay");
+    expect(r.stdout).not.toContain("Widget");
+  });
+
+  it("exits 2 on an unknown platform", () => {
+    const r = command("view", "--platform", "watch", fixture("platforms"));
+    expect(r.stderr).toContain("неизвестная платформа: watch");
+    expect(r.status).toBe(2);
+  });
+
+  it("exits 2 when platforms is not a map of glob lists", () => {
+    const r = run("config-bad-platforms");
+    expect(r.stderr).toContain("platforms — { <платформа>: [glob-шаблоны] }");
+    expect(r.status).toBe(2);
+  });
+});
+
 describe("speclint mutate", () => {
   it("breaks the code a scenario's Go tests cover and reports mutations that survive every test of the package", () => {
     const r = spawnSync("node", [new URL("../dist/cli.js", import.meta.url).pathname, "mutate", fixture("mutate"), "--format", "json"], { encoding: "utf8" });

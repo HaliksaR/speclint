@@ -1,0 +1,11 @@
+{
+  "roots": [
+    { "path": "openspec/orders", "space": "orders", "class": "core" },
+    { "path": "openspec/notices", "space": "notices" }
+  ],
+  "platforms": {
+    "web": ["web/**/*.test.ts"],
+    "ios": ["ios/**/*Tests.swift"],
+    "android": ["android/**/*Test.kt"]
+  }
+}
