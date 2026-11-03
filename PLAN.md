@@ -148,7 +148,7 @@
 - [x] Публикация: github.com/HaliksaR/speclint, тег `v0.1.0`, npm `@haliksar/speclint@0.1.0` (2026-11-01, пользователь)
 - [x] Версия 0.2.0: M14 (`doc-ref-dangling`) и M15 (`speclint init`), тег `v0.2.0`, npm `@haliksar/speclint@0.2.0` (2026-11-02)
 - [x] Версия 0.3.0: M16 (платформы: `speclint platforms`, `speclint view --platform`, `scenario-untested-on-platform`), тег `v0.3.0`, npm `@haliksar/speclint@0.3.0` (2026-11-02)
-- [ ] Прогон на рабочем проекте пользователя — делает пользователь (проекта нет на этой машине)
+- [x] Прогон на рабочем проекте пользователя: ohkurrva.art (CI-образ ставит `@haliksar/speclint`, гейты гоняют его на каждом коммите)
 
 ### M9 — Go и настройка правил по пилоту ohkurrva.art (`feat/m9-go`)
 Пилот 2026-10-28: спека отзывов `ohkurrva.art` (задача `KURR-1281`), 21 сценарий, метки в Go-тестах, гейт `specs`.
